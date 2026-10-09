@@ -1,0 +1,2 @@
+# OpenMusic
+fuck you school
