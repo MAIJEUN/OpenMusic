@@ -6,7 +6,7 @@ import { usePlayer } from '../store/player';
 import { toast, useUi } from '../store/ui';
 import { CollectionArt } from './CollectionArt';
 import { Equalizer } from './Equalizer';
-import { collectionMenuItems, deleteLocalPlaylist, openMenuFromEvent } from './menus';
+import { collectionMenuItems, openMenuFromEvent } from './menus';
 import { tracksOf } from './PlaylistCard';
 
 function removeLinked(c: SavedCollection) {
@@ -101,7 +101,8 @@ export function Sidebar() {
 
       <div className="sidebar__playlists">
         {item(likedInfo(liked))}
-        {playlists.map((p) => item(localInfo(p), () => deleteLocalPlaylist(p.id, () => current === collectionPath(localInfo(p)) && navigate('/')), '재생목록 삭제'))}
+        {/* 내 재생목록은 실수로 지우지 않도록 ✕ 버튼 없이 메뉴(확인 창)로만 삭제 */}
+        {playlists.map((p) => item(localInfo(p)))}
         {saved.map((c) => item(c, () => removeLinked(c)))}
         {saved.length === 0 && playlists.length === 0 && !collapsed && (
           <p className="sidebar__empty">새 재생목록을 만들거나, YouTube Music 재생목록 링크를 열면 여기에 표시돼요.</p>

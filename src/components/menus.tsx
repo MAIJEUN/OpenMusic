@@ -91,7 +91,12 @@ export function trackMenuItems(track: Track, opts: TrackMenuOptions = {}): MenuS
   return items;
 }
 
-/** 내 재생목록 삭제 (실행취소 가능) */
+/** 내 재생목록 삭제: 바로 지우지 않고 확인 창을 띄운다 */
+export function confirmDeleteLocalPlaylist(id: string, afterDelete?: () => void) {
+  useUi.getState().setDialog({ type: 'confirmDelete', playlistId: id, afterDelete });
+}
+
+/** 내 재생목록 삭제 실행 (확인 창에서 호출, 실행취소 가능) */
 export function deleteLocalPlaylist(id: string, after?: () => void) {
   const removed = useLibrary.getState().deletePlaylist(id);
   if (!removed) return;
@@ -132,7 +137,7 @@ export function collectionMenuItems(
         icon: <MdDriveFileRenameOutline />,
         onSelect: () => useUi.getState().setDialog({ type: 'rename', playlistId: collection.id }),
       },
-      { label: '재생목록 삭제', icon: <MdDeleteOutline />, onSelect: () => deleteLocalPlaylist(collection.id, opts.onDeleted) },
+      { label: '재생목록 삭제', icon: <MdDeleteOutline />, onSelect: () => confirmDeleteLocalPlaylist(collection.id, opts.onDeleted) },
     );
     return items;
   }

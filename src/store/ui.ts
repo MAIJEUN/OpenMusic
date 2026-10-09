@@ -33,7 +33,9 @@ export type Dialog =
   | { type: 'saveTo'; tracks: Track[]; suggestedTitle?: string }
   /** 새 재생목록 만들기 (곡을 같이 넣을 수도 있음) */
   | { type: 'newPlaylist'; tracks?: Track[]; suggestedTitle?: string }
-  | { type: 'rename'; playlistId: string };
+  | { type: 'rename'; playlistId: string }
+  /** 내 재생목록 삭제 확인 (삭제 후 afterDelete 실행) */
+  | { type: 'confirmDelete'; playlistId: string; afterDelete?: () => void };
 
 interface UiState {
   sidebarCollapsed: boolean;

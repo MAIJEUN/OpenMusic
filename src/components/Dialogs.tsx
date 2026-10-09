@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { parseLink, targetToPath } from '../../shared/links';
 import type { Track } from '../../shared/types';
 import { localInfo, useLibrary } from '../store/library';
+import { deleteLocalPlaylist } from './menus';
 import { toast, useUi } from '../store/ui';
 import { CollectionArt } from './CollectionArt';
 import { IconButton } from './IconButton';
@@ -164,6 +165,41 @@ function SaveToPlaylist({ tracks, suggestedTitle, onDone }: { tracks: Track[]; s
   );
 }
 
+function ConfirmDelete({ playlistId, afterDelete, onDone }: { playlistId: string; afterDelete?: () => void; onDone: () => void }) {
+  const playlist = useLibrary((s) => s.playlists.find((p) => p.id === playlistId));
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  // 실수로 Enter를 눌러도 지워지지 않도록 '취소'에 먼저 포커스
+  useEffect(() => cancelRef.current?.focus(), []);
+  if (!playlist) return null;
+  return (
+    <div className="confirm">
+      <div className="confirm__target">
+        <CollectionArt info={localInfo(playlist)} size={56} className="confirm__art" />
+        <div className="confirm__text">
+          <div className="confirm__title">{playlist.title}</div>
+          <div className="confirm__sub">내 재생목록 • {playlist.tracks.length}곡</div>
+        </div>
+      </div>
+      <p className="modal__desc">이 재생목록을 삭제할까요? 재생목록에 담긴 곡 목록이 함께 삭제됩니다.</p>
+      <div className="confirm__actions">
+        <button ref={cancelRef} type="button" className="btn btn--outline" onClick={onDone}>
+          취소
+        </button>
+        <button
+          type="button"
+          className="btn btn--danger"
+          onClick={() => {
+            onDone();
+            deleteLocalPlaylist(playlistId, afterDelete);
+          }}
+        >
+          삭제
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RenameForm({ playlistId, onDone }: { playlistId: string; onDone: () => void }) {
   const current = useLibrary((s) => s.playlists.find((p) => p.id === playlistId));
   const [title, setTitle] = useState(current?.title ?? '');
@@ -231,6 +267,12 @@ export function Dialogs() {
       return (
         <Modal title="재생목록 이름 바꾸기" onClose={close}>
           <RenameForm playlistId={dialog.playlistId} onDone={close} />
+        </Modal>
+      );
+    case 'confirmDelete':
+      return (
+        <Modal title="재생목록 삭제" onClose={close}>
+          <ConfirmDelete playlistId={dialog.playlistId} afterDelete={dialog.afterDelete} onDone={close} />
         </Modal>
       );
   }
