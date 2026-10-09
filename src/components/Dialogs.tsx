@@ -284,11 +284,31 @@ function PlaybackSettingsForm() {
         <div className="settings__text">
           <div className="settings__title">곡 끝 무음 건너뛰기</div>
           <div className="settings__desc">
-            곡 후반에 소리 없는 구간이 3초 이상 이어지면 다음 곡으로 넘어갑니다.{' '}
+            곡 후반에 소리 없는 구간이 정한 시간 이상 이어지면 다음 곡으로 넘어갑니다.{' '}
             {spectrumOn ? '(실시간 스펙트럼 켜짐 · 동작 중)' : '실시간 스펙트럼(재생 바의 파형 버튼)이 켜져 있을 때만 동작해요.'}
           </div>
         </div>
         <Switch checked={playback.skipSilence} onChange={(v) => set({ skipSilence: v })} label="곡 끝 무음 건너뛰기" />
+      </div>
+      <div className={`settings__sub ${playback.skipSilence ? '' : 'settings__sub--off'}`}>
+        <div className="settings__row settings__row--tight">
+          <div className="settings__text">
+            <div className="settings__label">무음 시간</div>
+          </div>
+          <span className="settings__value">{playback.silenceSeconds}초</span>
+        </div>
+        <input
+          type="range"
+          className="settings__range"
+          min={1}
+          max={10}
+          step={0.5}
+          value={playback.silenceSeconds}
+          disabled={!playback.skipSilence}
+          onChange={(e) => set({ silenceSeconds: Number(e.target.value) })}
+          aria-label="무음 시간"
+          style={{ ['--val' as string]: `${((playback.silenceSeconds - 1) / 9) * 100}%` }}
+        />
       </div>
     </div>
   );

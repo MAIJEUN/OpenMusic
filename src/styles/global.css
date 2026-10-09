@@ -1793,6 +1793,27 @@ p {
   font-size: 13px;
   line-height: 1.45;
 }
+.settings__sub {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 16px;
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
+  transition: opacity 0.15s;
+}
+.settings__sub--off {
+  opacity: 0.4;
+}
+.settings__row--tight {
+  padding-top: 0;
+}
+.settings__label {
+  font-size: 14px;
+  color: var(--text-2);
+}
+.settings__range:disabled {
+  cursor: default;
+}
 .settings__value {
   color: var(--text-2);
   font-variant-numeric: tabular-nums;

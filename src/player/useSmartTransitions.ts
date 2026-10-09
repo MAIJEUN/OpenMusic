@@ -8,7 +8,7 @@ import { spectrum } from './spectrum';
  * 곡 사이를 매끄럽게 넘기는 기능 모음.
  * 1) 노래가 아닌 구간 건너뛰기: SponsorBlock 구간 중 중간 구간은 건너뛰고, 영상 끝까지 이어지는 구간은 '실제 노래 끝'으로 본다
  * 2) 크로스페이드: 실제 노래 끝 N초 전부터 다음 곡을 겹쳐 튼다
- * 3) 무음 건너뛰기: 실시간 스펙트럼이 켜져 있을 때 곡 후반부에 3초 넘게 소리가 없으면 다음 곡으로
+ * 3) 무음 건너뛰기: 실시간 스펙트럼이 켜져 있을 때 곡 후반부에 설정한 시간(기본 3초) 넘게 소리가 없으면 다음 곡으로
  */
 export function useSmartTransitions() {
   useEffect(() => {
@@ -101,6 +101,7 @@ export function useSmartTransitions() {
       }
       const dur = s.duration;
       const pos = s.position;
+      const wait = Math.max(0.5, settings().silenceSeconds) * 1000;
       // 곡 후반부(절반 이후, 30초 이후)이고 끝까지 1.5초 이상 남았을 때만
       if (!dur || pos < Math.max(30, dur * 0.5) || dur - pos < 1.5) {
         silenceSince = 0;
@@ -116,7 +117,7 @@ export function useSmartTransitions() {
         return;
       }
       if (!silenceSince) silenceSince = now;
-      else if (now - silenceSince > 3000) {
+      else if (now - silenceSince > wait) {
         transitioned = true;
         silenceSince = 0;
         const hasNext = s.index < s.queue.length - 1 || s.repeat === 'all';
