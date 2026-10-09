@@ -1,17 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Track } from '../../shared/types';
-import { api } from '../lib/api';
 import { shuffleArray, uid } from '../lib/format';
 import type { Engine, EngineState } from '../player/engine';
-import { useLibrary } from './library';
 import { toast } from './ui';
 
 export interface QueueItem {
   uid: string;
   track: Track;
-  /** 자동재생(비슷한 음악)으로 추가된 항목 */
-  auto?: boolean;
 }
 
 export type Repeat = 'off' | 'all' | 'one';
@@ -31,18 +27,14 @@ interface PlayerState {
   /** 셔플 전 순서(uid) — 셔플 해제 시 복원 */
   originalOrder: string[] | null;
   repeat: Repeat;
-  autoplay: boolean;
   status: Status;
   position: number;
   duration: number;
   volume: number;
   muted: boolean;
-  radioLoading: boolean;
 
   current: () => QueueItem | undefined;
   playTracks: (tracks: Track[], startIndex?: number, source?: PlaySource | null, opts?: { shuffle?: boolean; autoplay?: boolean }) => void;
-  startRadio: (track: Track) => Promise<void>;
-  playList: (playlistId: string, title: string, videoId?: string) => Promise<void>;
   playNext: (tracks: Track[]) => void;
   addToQueue: (tracks: Track[]) => void;
   removeFromQueue: (uid: string) => void;
@@ -60,7 +52,6 @@ interface PlayerState {
   toggleMute: () => void;
   cycleRepeat: () => void;
   toggleShuffle: () => void;
-  setAutoplay: (on: boolean) => void;
 
   /* 엔진 → 스토어 */
   _onEngineState: (s: EngineState) => void;
@@ -70,14 +61,12 @@ interface PlayerState {
 
 let engine: Engine | null = null;
 let consecutiveErrors = 0;
-/** 현재 곡을 실제로 재생 시작했는지 (기록 추가용) */
-let countedUid: string | null = null;
 
 export function attachEngine(e: Engine) {
   engine = e;
 }
 
-const toItems = (tracks: Track[], auto = false): QueueItem[] => tracks.map((track) => ({ uid: uid(), track, auto }));
+const toItems = (tracks: Track[]): QueueItem[] => tracks.map((track) => ({ uid: uid(), track }));
 
 const POSITION_KEY = 'om-position';
 
@@ -91,30 +80,8 @@ export const usePlayer = create<PlayerState>()(
           set({ status: 'idle', position: 0, duration: 0 });
           return;
         }
-        countedUid = null;
         set({ status: autoplay ? 'loading' : 'paused', position: start, duration: item.track.duration ?? 0 });
         engine?.load(item.track.videoId, { autoplay, start, durationHint: item.track.duration });
-        if (autoplay) maybeExtendWithRadio();
-      };
-
-      /** 큐의 마지막 곡에 도달하면 자동재생으로 비슷한 음악을 덧붙인다 */
-      const maybeExtendWithRadio = async () => {
-        const s = get();
-        if (!s.autoplay || s.repeat === 'all' || s.radioLoading) return;
-        if (s.index < s.queue.length - 1) return;
-        const seed = s.queue[s.index]?.track;
-        if (!seed) return;
-        set({ radioLoading: true });
-        try {
-          const res = await api.upNext(seed.videoId);
-          const existing = new Set(get().queue.map((q) => q.track.videoId));
-          const fresh = res.tracks.filter((t) => !existing.has(t.videoId)).slice(0, 25);
-          if (fresh.length) set((st) => ({ queue: [...st.queue, ...toItems(fresh, true)] }));
-        } catch {
-          /* 자동재생 실패는 조용히 무시 */
-        } finally {
-          set({ radioLoading: false });
-        }
       };
 
       const goTo = (index: number, autoplay = true) => {
@@ -129,13 +96,11 @@ export const usePlayer = create<PlayerState>()(
         shuffle: false,
         originalOrder: null,
         repeat: 'off',
-        autoplay: true,
         status: 'idle',
         position: 0,
         duration: 0,
         volume: 100,
         muted: false,
-        radioLoading: false,
 
         current: () => get().queue[get().index],
 
@@ -152,30 +117,6 @@ export const usePlayer = create<PlayerState>()(
           consecutiveErrors = 0;
           set({ queue: items, index, source, shuffle: !!opts.shuffle, originalOrder });
           loadCurrent(opts.autoplay ?? true);
-        },
-
-        startRadio: async (track) => {
-          const source = { title: `${track.title} 뮤직 스테이션` };
-          get().playTracks([track], 0, source);
-          try {
-            const res = await api.upNext(track.videoId);
-            const rest = res.tracks.filter((t) => t.videoId !== track.videoId);
-            // 그 사이 다른 곡을 재생했다면 덧붙이지 않는다
-            if (get().source !== source) return;
-            set((s) => ({ queue: [...s.queue, ...toItems(rest)] }));
-          } catch (err) {
-            toast(`뮤직 스테이션을 불러오지 못했습니다. ${(err as Error).message}`);
-          }
-        },
-
-        playList: async (playlistId, title, videoId) => {
-          try {
-            const res = await api.upNext(videoId, playlistId);
-            if (!res.tracks.length) throw new Error('재생할 곡이 없습니다.');
-            get().playTracks(res.tracks, 0, { title: res.title || title });
-          } catch (err) {
-            toast(`재생할 수 없습니다. ${(err as Error).message}`);
-          }
         },
 
         playNext: (tracks) => {
@@ -196,10 +137,7 @@ export const usePlayer = create<PlayerState>()(
           const s = get();
           if (!s.queue.length) return get().playTracks(tracks);
           const items = toItems(tracks);
-          // 자동재생 항목보다 앞(사용자 큐의 끝)에 넣는다
-          let insertAt = s.queue.length;
-          while (insertAt > s.index + 1 && s.queue[insertAt - 1].auto) insertAt--;
-          const queue = [...s.queue.slice(0, insertAt), ...items, ...s.queue.slice(insertAt)];
+          const queue = [...s.queue, ...items];
           set({
             queue,
             originalOrder: s.originalOrder ? [...s.originalOrder, ...items.map((i) => i.uid)] : null,
@@ -236,8 +174,7 @@ export const usePlayer = create<PlayerState>()(
           const currentUid = s.queue[s.index]?.uid;
           const queue = s.queue.slice();
           const [moved] = queue.splice(from, 1);
-          // 사용자가 직접 옮긴 자동재생 항목은 일반 항목으로 취급
-          queue.splice(to, 0, { ...moved, auto: false });
+          queue.splice(to, 0, moved);
           set({ queue, index: Math.max(0, queue.findIndex((q) => q.uid === currentUid)) });
         },
 
@@ -362,23 +299,12 @@ export const usePlayer = create<PlayerState>()(
           }
         },
 
-        setAutoplay: (on) => {
-          set({ autoplay: on });
-          if (on) maybeExtendWithRadio();
-          else set((s) => ({ queue: s.queue.filter((q, i) => !q.auto || i <= s.index) }));
-        },
-
         _onEngineState: (state) => {
           switch (state) {
             case 'playing': {
               consecutiveErrors = 0;
               const d = engine?.getDuration() ?? 0;
               set({ status: 'playing', ...(d > 0 ? { duration: d } : {}) });
-              const item = get().current();
-              if (item && countedUid !== item.uid) {
-                countedUid = item.uid;
-                useLibrary.getState().addHistory(item.track);
-              }
               break;
             }
             case 'paused':
@@ -448,7 +374,6 @@ export const usePlayer = create<PlayerState>()(
         shuffle: s.shuffle,
         originalOrder: s.originalOrder,
         repeat: s.repeat,
-        autoplay: s.autoplay,
         volume: s.volume,
         muted: s.muted,
         duration: s.duration,

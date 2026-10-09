@@ -84,24 +84,6 @@ export function LinkForm({ autoFocus, onDone }: { autoFocus?: boolean; onDone?: 
   );
 }
 
-const SHORTCUTS: [string, string][] = [
-  ['Space / K', '재생 / 일시중지'],
-  ['J / ←', '10초 뒤로 (Shift+←: 5초)'],
-  ['L / →', '10초 앞으로 (Shift+→: 5초)'],
-  ['N / Shift+N', '다음 곡'],
-  ['P / Shift+P', '이전 곡'],
-  ['=', '볼륨 높이기'],
-  ['-', '볼륨 낮추기'],
-  ['M', '음소거'],
-  ['R', '반복 모드 변경'],
-  ['S', '셔플'],
-  ['+', '좋아요'],
-  ['_', '싫어요'],
-  ['F', '플레이어 페이지 열기/닫기'],
-  ['/', '검색'],
-  ['?', '단축키 보기'],
-];
-
 export function Dialogs() {
   const dialog = useUi((s) => s.dialog);
   const setDialog = useUi((s) => s.setDialog);
@@ -111,23 +93,9 @@ export function Dialogs() {
     return (
       <Modal title="재생목록 링크 열기" onClose={close}>
         <p className="modal__desc">
-          YouTube Music 재생목록, 앨범, 아티스트 또는 곡 링크를 붙여넣으세요. YouTube 재생목록 링크도 사용할 수 있습니다.
+          YouTube Music 재생목록이나 앨범 링크를 붙여넣으세요. 연 재생목록은 사이드바에 등록됩니다. YouTube 재생목록 링크도 사용할 수 있어요.
         </p>
         <LinkForm autoFocus onDone={close} />
-      </Modal>
-    );
-
-  if (dialog === 'shortcuts')
-    return (
-      <Modal title="단축키" onClose={close}>
-        <dl className="shortcuts">
-          {SHORTCUTS.map(([k, v]) => (
-            <div key={k} className="shortcuts__row">
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
       </Modal>
     );
 

@@ -3,26 +3,24 @@
 YouTube Music 재생목록 링크를 붙여넣으면 **YouTube Music과 같은 화면과 사용감**으로 재생할 수 있는 웹 플레이어입니다.
 
 - 재생은 YouTube 공식 임베드 플레이어(IFrame Player API)로 합니다.
-- 재생목록·앨범·아티스트·가사 같은 메타데이터는 [youtubei.js](https://github.com/LuanRT/YouTube.js)로 가져옵니다.
-- 로그인 없이 쓰며, 보관함·좋아요·기록은 브라우저(localStorage)에 저장됩니다.
+- 재생목록·앨범·가사 같은 메타데이터는 [youtubei.js](https://github.com/LuanRT/YouTube.js)로 가져옵니다.
+- 로그인 없이 쓰며, 등록한 재생목록은 브라우저(localStorage)에 저장됩니다.
 
 ## 주요 기능
 
 | 영역 | 기능 |
 |---|---|
-| 링크 열기 | `music.youtube.com/playlist?list=…`, `/browse/MPRE…`(앨범), `/channel/UC…`(아티스트), `/watch?v=…&list=…`, `youtube.com`/`youtu.be` 링크. 검색창에 붙여넣어도 열립니다. 주소의 `music.youtube.com` 부분만 이 사이트 주소로 바꿔도 같은 페이지가 열립니다. |
+| 링크 열기 | `music.youtube.com/playlist?list=…`, `/browse/MPRE…`(앨범), `/watch?v=…&list=…`, `youtube.com`·`youtu.be` 재생목록 링크. 상단 입력칸에 붙여넣으면 바로 열립니다. 주소의 `music.youtube.com` 부분만 이 사이트 주소로 바꿔도 같은 페이지가 열립니다. |
+| 재생목록 등록 | 연 재생목록·앨범은 사이드바(모바일은 홈)에 자동 등록되어 언제든 다시 불러올 수 있습니다. ✕ 버튼이나 메뉴로 삭제(실행취소 가능). 브라우저(localStorage)에 저장됩니다. |
 | 재생 | 재생/일시중지, 이전/다음, 탐색(드래그), 볼륨, 셔플(해제 시 원래 순서 복원), 반복(사용 안함/모두/한 곡), 재생 불가 곡 자동 건너뛰기 |
-| 플레이어 페이지 | 노래/동영상 전환, **다음 트랙**(드래그로 순서 변경, 삭제, 재생 중인 출처, 자동재생), **가사**, **관련 항목** |
-| 대기열 | 다음 곡으로 재생, 현재 재생목록에 추가, 뮤직 스테이션(라디오) 시작, 자동재생(비슷한 음악 이어서 재생) |
-| 탐색 | 홈 피드, 둘러보기, 검색(추천 검색어·검색 기록·필터 칩), 아티스트·앨범 페이지 |
-| 보관함 | 재생목록/앨범/아티스트 저장, 좋아요 표시한 음악, 재생 기록 |
-| 기타 | 키보드 단축키(`?`), 미디어 키·잠금화면 컨트롤(Media Session), 새로고침 후 대기열·재생 위치 복원, 모바일 레이아웃 |
+| 플레이어 페이지 | 노래/동영상 전환, **다음 트랙**(드래그로 순서 변경, 삭제), **가사** |
+| 기타 | 다음 곡으로 재생·현재 재생목록에 추가, 키보드 단축키(Space 재생, N/P 다음·이전, J/L 탐색, S 셔플, R 반복, M 음소거, F 플레이어 페이지), 미디어 키·잠금화면 컨트롤, 새로고침 후 대기열 복원, 모바일 레이아웃 |
 
 ## 구조
 
 ```
 shared/   서버·클라이언트 공용 타입과 링크 파서
-server/   API (Hono) — app.ts(라우트), youtube.ts(youtubei.js), normalize.ts(응답 정규화), mock.ts(목 데이터), node.ts(Node 실행)
+server/   API (Hono) — app.ts(라우트: 재생목록·앨범·가사·다음 트랙), youtube.ts(youtubei.js), normalize.ts(응답 정규화), mock.ts(목 데이터), node.ts(Node 실행)
 worker/   Cloudflare Worker 진입점
 src/      React 프론트엔드 (Vite)
 ```
