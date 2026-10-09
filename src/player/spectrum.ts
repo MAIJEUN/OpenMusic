@@ -21,6 +21,12 @@ class Spectrum {
   private raf = 0;
   private testGain: GainNode | null = null;
 
+  /** 탭 공유로 받은 화면 영상 트랙 (동영상 색 추출용). 스펙트럼이 꺼져 있으면 null */
+  get videoTrack(): MediaStreamTrack | null {
+    const t = this.stream?.getVideoTracks()[0];
+    return t && t.readyState === 'live' ? t : null;
+  }
+
   /** 탭 오디오 캡처를 지원하는 브라우저인지 */
   get supported(): boolean {
     return typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
@@ -89,7 +95,8 @@ class Spectrum {
     this.setState('starting');
     try {
       const options = {
-        video: { displaySurface: 'browser', frameRate: 1 },
+        // 영상 트랙은 '동영상' 모드에서 화면 색을 읽는 데 쓴다 (낮은 프레임레이트로 충분)
+        video: { displaySurface: 'browser', frameRate: { ideal: 6, max: 10 } },
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
@@ -103,8 +110,6 @@ class Spectrum {
       } as DisplayMediaStreamOptions;
       const stream = await navigator.mediaDevices.getDisplayMedia(options);
       const audio = stream.getAudioTracks()[0];
-      // 영상은 필요 없으므로 바로 끈다
-      stream.getVideoTracks().forEach((t) => t.stop());
       if (!audio) {
         stream.getTracks().forEach((t) => t.stop());
         throw new Error("공유 창에서 '이 탭'을 고르고 '탭 오디오도 공유'를 켜 주세요.");

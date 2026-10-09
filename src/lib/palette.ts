@@ -81,7 +81,11 @@ function analyse(img: HTMLImageElement): Palette {
   canvas.height = size;
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   ctx.drawImage(img, 0, 0, size, size);
-  const data = ctx.getImageData(0, 0, size, size).data;
+  return paletteFromPixels(ctx.getImageData(0, 0, size, size).data);
+}
+
+/** RGBA 픽셀 배열에서 팔레트를 계산한다 (이미지, 동영상 프레임 공용) */
+export function paletteFromPixels(data: Uint8ClampedArray): Palette {
 
   // 색상(hue)을 24칸으로 나눠 '선명하고 많이 쓰인' 색에 점수를 준다
   const BUCKETS = 24;
@@ -146,4 +150,30 @@ export function extractPalette(url: string): Promise<Palette> {
   return p;
 }
 
-export const rgbCss = ([r, g, b]: RGB) => `rgb(${r}, ${g}, ${b})`;
+export const rgbCss = ([r, g, b]: RGB) => `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+
+/** 두 팔레트가 눈에 띄게 다른지 (작은 변화로 색이 계속 흔들리지 않게) */
+export function paletteDistance(a: Palette, b: Palette): number {
+  const d = (x: RGB, y: RGB) => Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+  return Math.max(d(a.primary, b.primary), d(a.secondary, b.secondary));
+}
+
+/**
+ * YouTube가 자동으로 만드는 동영상 장면 썸네일 (약 25%, 50%, 75% 지점).
+ * 탭 공유 없이도 영상 진행에 따라 색을 바꾸는 데 쓴다.
+ */
+export function videoFrameUrls(videoId: string, mock = false): string[] {
+  if (mock) return [1, 2, 3].map((n) => `/api/mock/img/${videoId}-f${n}.svg`);
+  return [1, 2, 3].map((n) => `https://i.ytimg.com/vi/${videoId}/hq${n}.jpg`);
+}
+
+/** 이미지 URL 그대로(크기 변환 없이) 팔레트를 구한다 */
+export function extractPaletteExact(url: string): Promise<Palette> {
+  let p = cache.get(url);
+  if (!p) {
+    p = loadImage(imageSource(url)).then(analyse);
+    p.catch(() => cache.delete(url));
+    cache.set(url, p);
+  }
+  return p;
+}
