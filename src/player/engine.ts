@@ -225,7 +225,10 @@ export class FakeEngine implements Engine {
   }
 
   seek(seconds: number) {
-    this.time = Math.min(Math.max(0, seconds), this.duration);
+    // 실제 YouTube 플레이어처럼 seek가 약간 늦게 반영되도록 흉내낸다 (그동안 getTime은 예전 값)
+    const t = Math.min(Math.max(0, seconds), this.duration);
+    if (!this.playing) this.time = t;
+    else setTimeout(() => (this.time = t), 350);
   }
   setVolume() {}
   setMuted() {}

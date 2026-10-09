@@ -73,6 +73,24 @@ interface PlayerState {
 let engine: Engine | null = null;
 let consecutiveErrors = 0;
 
+/**
+ * 탐색 처리.
+ * YouTube 플레이어는 seekTo 직후 한동안 예전 재생 시간을 돌려주기 때문에,
+ * 그 값을 그대로 쓰면 화면이 뒤로 튀고 연속 탐색(방향키 연타)이 예전 위치 기준으로 계산된다.
+ * - 화면 위치는 목표 위치로 즉시 바꾸고
+ * - 실제 seek는 연타가 멈춘 뒤 한 번만 보내며
+ * - 플레이어가 목표 근처에 도착할 때까지(최대 2.5초) 플레이어가 주는 시간을 무시한다.
+ */
+let pendingSeek: { target: number; sentAt: number } | null = null;
+let seekTimer: ReturnType<typeof setTimeout> | null = null;
+const SEEK_DEBOUNCE_MS = 140;
+
+function cancelPendingSeek() {
+  if (seekTimer) clearTimeout(seekTimer);
+  seekTimer = null;
+  pendingSeek = null;
+}
+
 export function attachEngine(e: Engine) {
   engine = e;
 }
@@ -97,6 +115,7 @@ export const usePlayer = create<PlayerState>()(
           set({ status: 'idle', position: 0, duration: 0 });
           return;
         }
+        cancelPendingSeek();
         set({ status: autoplay ? 'loading' : 'paused', position: start, duration: item.track.duration ?? 0 });
         engine?.load(item.track.videoId, { autoplay, start, durationHint: item.track.duration });
       };
@@ -271,7 +290,14 @@ export const usePlayer = create<PlayerState>()(
             loadCurrent(false, t);
             return;
           }
-          engine?.seek(t);
+          pendingSeek = { target: t, sentAt: 0 };
+          if (seekTimer) clearTimeout(seekTimer);
+          seekTimer = setTimeout(() => {
+            seekTimer = null;
+            if (!pendingSeek) return;
+            pendingSeek.sentAt = Date.now();
+            engine?.seek(pendingSeek.target);
+          }, SEEK_DEBOUNCE_MS);
         },
 
         seekBy: (delta) => get().seek(get().position + delta),
@@ -395,7 +421,18 @@ export const usePlayer = create<PlayerState>()(
           if (s.status !== 'playing' && s.status !== 'buffering') return;
           const position = engine.getTime();
           const d = engine.getDuration();
-          set({ position, ...(d > 0 && Math.abs(d - s.duration) > 0.5 ? { duration: d } : {}) });
+          const durationPatch = d > 0 && Math.abs(d - s.duration) > 0.5 ? { duration: d } : {};
+          if (pendingSeek) {
+            // 아직 seek를 보내기 전이거나, 플레이어가 목표 위치에 도착하기 전이면 화면 위치를 유지
+            const arrived = pendingSeek.sentAt > 0 && Math.abs(position - pendingSeek.target) < 1.5;
+            const timedOut = pendingSeek.sentAt > 0 && Date.now() - pendingSeek.sentAt > 2500;
+            if (!arrived && !timedOut) {
+              if (Object.keys(durationPatch).length) set(durationPatch);
+              return;
+            }
+            pendingSeek = null;
+          }
+          set({ position, ...durationPatch });
         },
       };
     },
