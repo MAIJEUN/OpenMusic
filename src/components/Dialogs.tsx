@@ -6,6 +6,7 @@ import type { Track } from '../../shared/types';
 import { localInfo, useLibrary } from '../store/library';
 import { deleteLocalPlaylist } from './menus';
 import { toast, useUi } from '../store/ui';
+import { useSpectrumState } from '../player/useSpectrum';
 import { CollectionArt } from './CollectionArt';
 import { IconButton } from './IconButton';
 
@@ -235,6 +236,64 @@ function RenameForm({ playlistId, onDone }: { playlistId: string; onDone: () => 
   );
 }
 
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} className={`switch ${checked ? 'switch--on' : ''}`} onClick={() => onChange(!checked)}>
+      <span className="switch__knob" />
+    </button>
+  );
+}
+
+/** 재생 설정: 크로스페이드, 노래가 아닌 구간 건너뛰기, 곡 끝 무음 건너뛰기 */
+function PlaybackSettingsForm() {
+  const playback = useUi((s) => s.playback);
+  const set = useUi((s) => s.setPlayback);
+  const spectrumOn = useSpectrumState() === 'on';
+  return (
+    <div className="settings">
+      <div className="settings__row">
+        <div className="settings__text">
+          <div className="settings__title">크로스페이드</div>
+          <div className="settings__desc">곡이 끝나갈 때 다음 곡과 자연스럽게 겹쳐서 넘어갑니다.</div>
+        </div>
+        <span className="settings__value">{playback.crossfade ? `${playback.crossfade}초` : '끔'}</span>
+      </div>
+      <input
+        type="range"
+        className="settings__range"
+        min={0}
+        max={12}
+        step={1}
+        value={playback.crossfade}
+        onChange={(e) => set({ crossfade: Number(e.target.value) })}
+        aria-label="크로스페이드 길이"
+        style={{ ['--val' as string]: `${(playback.crossfade / 12) * 100}%` }}
+      />
+
+      <div className="settings__row">
+        <div className="settings__text">
+          <div className="settings__title">노래가 아닌 구간 건너뛰기</div>
+          <div className="settings__desc">
+            뮤직비디오의 인트로·아웃트로·영상 끝 엔딩 화면처럼 노래가 아닌 부분을 건너뜁니다. (SponsorBlock 공개 데이터, 등록된 곡만)
+          </div>
+        </div>
+        <Switch checked={playback.skipNonMusic} onChange={(v) => set({ skipNonMusic: v })} label="노래가 아닌 구간 건너뛰기" />
+      </div>
+
+      <div className="settings__row">
+        <div className="settings__text">
+          <div className="settings__title">곡 끝 무음 건너뛰기</div>
+          <div className="settings__desc">
+            곡 후반에 소리 없는 구간이 3초 이상 이어지면 다음 곡으로 넘어갑니다.{' '}
+            {spectrumOn ? '(실시간 스펙트럼 켜짐 · 동작 중)' : '실시간 스펙트럼(재생 바의 파형 버튼)이 켜져 있을 때만 동작해요.'}
+          </div>
+        </div>
+        <Switch checked={playback.skipSilence} onChange={(v) => set({ skipSilence: v })} label="곡 끝 무음 건너뛰기" />
+      </div>
+    </div>
+  );
+}
+
 export function Dialogs() {
   const dialog = useUi((s) => s.dialog);
   const setDialog = useUi((s) => s.setDialog);
@@ -267,6 +326,12 @@ export function Dialogs() {
       return (
         <Modal title="재생목록 이름 바꾸기" onClose={close}>
           <RenameForm playlistId={dialog.playlistId} onDone={close} />
+        </Modal>
+      );
+    case 'settings':
+      return (
+        <Modal title="재생 설정" onClose={close}>
+          <PlaybackSettingsForm />
         </Modal>
       );
     case 'confirmDelete':

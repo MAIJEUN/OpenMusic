@@ -63,6 +63,8 @@ interface PlayerState {
   toggleMute: () => void;
   cycleRepeat: () => void;
   toggleShuffle: () => void;
+  /** 다음 곡으로 크로스페이드 (엔진이 지원하지 않으면 바로 다음 곡) */
+  crossfadeNext: (seconds: number) => void;
 
   /* 엔진 → 스토어 */
   _onEngineState: (s: EngineState) => void;
@@ -126,7 +128,8 @@ export const usePlayer = create<PlayerState>()(
       };
 
       /** 대기열 끝에서 '모두 반복'으로 처음으로 돌아갈 때. 셔플 중이면 새 순서로 다시 섞는다 */
-      const wrapAround = () => {
+      /** '모두 반복'으로 한 바퀴를 다 돌았을 때: 셔플 중이면 새 순서로 다시 섞는다 */
+      const reshuffleForNextRound = () => {
         const s = get();
         if (s.shuffle && s.queue.length > 2) {
           const last = s.queue[s.queue.length - 1];
@@ -135,6 +138,10 @@ export const usePlayer = create<PlayerState>()(
           if (queue[0].uid === last.uid) queue = [...queue.slice(1), queue[0]];
           set({ queue });
         }
+      };
+
+      const wrapAround = () => {
+        reshuffleForNextRound();
         goTo(0);
       };
 
@@ -358,6 +365,23 @@ export const usePlayer = create<PlayerState>()(
               index: Math.max(0, restored.findIndex((q) => q.uid === current?.uid)),
             });
           }
+        },
+
+        crossfadeNext: (seconds) => {
+          const s = get();
+          if (!s.queue.length) return;
+          if (!engine?.crossfade) return get().next();
+          let nextIndex = s.index + 1;
+          if (nextIndex >= s.queue.length) {
+            if (s.repeat === 'off') return;
+            reshuffleForNextRound();
+            nextIndex = 0;
+          }
+          const item = get().queue[nextIndex];
+          cancelPendingSeek();
+          consecutiveErrors = 0;
+          set({ index: nextIndex, position: 0, duration: item.track.duration ?? 0, status: 'loading' });
+          engine.crossfade(item.track.videoId, seconds, { durationHint: item.track.duration });
         },
 
         _onEngineState: (state) => {

@@ -4,7 +4,8 @@ import { artistNames } from '../lib/format';
 import { thumbSize } from '../lib/thumb';
 import { attachEngine, usePlayer } from '../store/player';
 import { toast, useUi } from '../store/ui';
-import { FakeEngine, YouTubeEngine, type Engine, type EngineEvents } from './engine';
+import { DualEngine, FakeEngine, YouTubeEngine, type Engine, type EngineEvents } from './engine';
+import { useSmartTransitions } from './useSmartTransitions';
 import { anchorPause, anchorPlay } from './mediaAnchor';
 
 const HIDDEN: Partial<CSSStyleDeclaration> = {
@@ -38,7 +39,8 @@ export function PlayerHost() {
       .catch(() => ({ mock: false }))
       .then((cfg) => {
         if (cancelled || engineRef.current || !hostRef.current) return;
-        const engine: Engine = cfg.mock ? new FakeEngine(events) : new YouTubeEngine(events);
+        // 플레이어 두 개를 번갈아 써서 크로스페이드를 지원한다
+        const engine: Engine = new DualEngine((ev) => (cfg.mock ? new FakeEngine(ev) : new YouTubeEngine(ev)), events);
         engine.mount(hostRef.current);
         const { volume, muted, queue, index, position } = usePlayer.getState();
         engine.setVolume(volume);
@@ -86,6 +88,7 @@ export function PlayerHost() {
 
   useMediaSession();
   useDocumentTitle();
+  useSmartTransitions();
 
   return <div ref={hostRef} className="player-host" aria-hidden />;
 }

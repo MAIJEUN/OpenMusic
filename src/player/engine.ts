@@ -28,6 +28,8 @@ export interface Engine {
   setMuted(muted: boolean): void;
   getTime(): number;
   getDuration(): number;
+  /** 다음 곡으로 크로스페이드 (지원하는 엔진만) */
+  crossfade?(videoId: string, seconds: number, opts?: Omit<LoadOptions, 'autoplay'>): void;
 }
 
 const noopEvents: EngineEvents = { onState: () => {}, onError: () => {}, onFatal: () => {} };
@@ -242,5 +244,158 @@ export class FakeEngine implements Engine {
   private stopTimer() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * 플레이어 두 개를 번갈아 쓰는 엔진 (크로스페이드용).
+ * 평소에는 '활성' 플레이어만 쓰고, crossfade()가 불리면 쉬고 있던 플레이어로 다음 곡을 틀어
+ * 두 플레이어의 볼륨을 엇갈리게 바꾼 뒤 활성 플레이어를 넘긴다.
+ * 활성 플레이어의 이벤트만 바깥(스토어)으로 전달한다.
+ */
+export class DualEngine implements Engine {
+  private players: [Engine, Engine];
+  private slots: HTMLElement[] = [];
+  private active = 0;
+  private volume = 100;
+  private muted = false;
+  private fade: { timer: ReturnType<typeof setInterval> | null; wait: ReturnType<typeof setTimeout> | null; from: number } | null = null;
+  /** 크로스페이드 중 새 플레이어가 재생을 시작했는지 */
+  private nextStarted: (() => void) | null = null;
+
+  constructor(
+    create: (events: EngineEvents) => Engine,
+    private events: EngineEvents = noopEvents,
+  ) {
+    const forward = (i: number): EngineEvents => ({
+      onState: (s) => {
+        if (s === 'playing' && i !== this.active) return;
+        if (i === this.active) {
+          if (s === 'playing' && this.nextStarted) {
+            const cb = this.nextStarted;
+            this.nextStarted = null;
+            cb();
+          }
+          this.events.onState(s);
+        }
+      },
+      onError: (code) => i === this.active && this.events.onError(code),
+      onFatal: (msg) => i === this.active && this.events.onFatal(msg),
+    });
+    this.players = [create(forward(0)), create(forward(1))];
+  }
+
+  mount(el: HTMLElement) {
+    this.players.forEach((p, i) => {
+      const slot = document.createElement('div');
+      slot.className = `player-slot ${i === this.active ? 'player-slot--active' : ''}`;
+      el.appendChild(slot);
+      this.slots.push(slot);
+      p.mount(slot);
+    });
+  }
+
+  private get cur() {
+    return this.players[this.active];
+  }
+
+  private applyVolume(p: Engine, v: number) {
+    p.setVolume(Math.round(v));
+    p.setMuted(this.muted);
+  }
+
+  /** 진행 중인 크로스페이드를 멈추고 이전 곡 플레이어를 정리한다 */
+  private cancelFade() {
+    if (!this.fade) return;
+    if (this.fade.timer) clearInterval(this.fade.timer);
+    if (this.fade.wait) clearTimeout(this.fade.wait);
+    const old = this.players[this.fade.from];
+    old.pause();
+    this.applyVolume(old, this.volume);
+    this.applyVolume(this.cur, this.volume);
+    this.fade = null;
+    this.nextStarted = null;
+  }
+
+  private setActive(i: number) {
+    this.active = i;
+    this.slots.forEach((s, j) => s.classList.toggle('player-slot--active', j === i));
+  }
+
+  load(videoId: string, opts: LoadOptions) {
+    this.cancelFade();
+    this.applyVolume(this.cur, this.volume);
+    this.cur.load(videoId, opts);
+  }
+
+  /**
+   * 다음 곡을 쉬고 있던 플레이어로 틀고, seconds초 동안 두 곡의 볼륨을 엇갈리게 바꾼다.
+   * 호출 즉시 새 플레이어가 활성 플레이어가 된다 (시간·상태는 새 곡 기준).
+   */
+  crossfade(videoId: string, seconds: number, opts: Omit<LoadOptions, 'autoplay'> = {}) {
+    this.cancelFade();
+    const from = this.active;
+    const to = 1 - from;
+    const oldP = this.players[from];
+    const newP = this.players[to];
+    this.applyVolume(newP, 0);
+    this.setActive(to);
+    const fade: NonNullable<DualEngine['fade']> = { timer: null, wait: null, from };
+    this.fade = fade;
+
+    const begin = () => {
+      if (this.fade !== fade) return;
+      if (fade.wait) clearTimeout(fade.wait);
+      const startAt = performance.now();
+      const total = Math.max(0.2, seconds) * 1000;
+      fade.timer = setInterval(() => {
+        const t = Math.min(1, (performance.now() - startAt) / total);
+        // 등전력 곡선: 중간에 소리가 꺼지는 느낌 없이 자연스럽게 섞인다
+        this.applyVolume(oldP, this.volume * Math.cos((t * Math.PI) / 2));
+        this.applyVolume(newP, this.volume * Math.sin((t * Math.PI) / 2));
+        if (t >= 1) {
+          if (fade.timer) clearInterval(fade.timer);
+          oldP.pause();
+          this.applyVolume(oldP, this.volume);
+          this.applyVolume(newP, this.volume);
+          if (this.fade === fade) this.fade = null;
+        }
+      }, 50);
+    };
+    // 새 곡이 실제로 재생을 시작하면 페이드 시작 (늦어지면 4초 뒤 강제로 시작)
+    this.nextStarted = begin;
+    fade.wait = setTimeout(() => {
+      this.nextStarted = null;
+      begin();
+    }, 4000);
+    newP.load(videoId, { ...opts, autoplay: true, start: opts.start ?? 0 });
+  }
+
+  play() {
+    this.cur.play();
+  }
+  pause() {
+    // 크로스페이드 중에 멈추면 이전 곡도 함께 정리
+    this.cancelFade();
+    this.cur.pause();
+  }
+  seek(seconds: number) {
+    this.cur.seek(seconds);
+  }
+  setVolume(volume: number) {
+    this.volume = volume;
+    if (!this.fade) this.applyVolume(this.cur, volume);
+  }
+  setMuted(muted: boolean) {
+    this.muted = muted;
+    this.players.forEach((p) => p.setMuted(muted));
+  }
+  getTime() {
+    return this.cur.getTime();
+  }
+  getDuration() {
+    return this.cur.getDuration();
   }
 }
