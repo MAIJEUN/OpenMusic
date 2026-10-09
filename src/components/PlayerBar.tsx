@@ -1,5 +1,6 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
+  MdGraphicEq,
   MdKeyboardArrowDown,
   MdKeyboardArrowUp,
   MdPause,
@@ -15,8 +16,12 @@ import {
 } from 'react-icons/md';
 import { artistNames, formatTime } from '../lib/format';
 import { player, usePlayer } from '../store/player';
-import { useUi } from '../store/ui';
+import { api } from '../lib/api';
+import { spectrum } from '../player/spectrum';
+import { useSpectrumState } from '../player/useSpectrum';
+import { toast, useUi } from '../store/ui';
 import { IconButton } from './IconButton';
+import { SpectrumBackground } from './SpectrumBackground';
 import { Thumb } from './Thumb';
 
 /** 드래그 가능한 진행 막대 */
@@ -153,6 +158,48 @@ export function ShuffleButton({ size }: { size?: 'sm' | 'md' | 'lg' }) {
   );
 }
 
+/** 실시간 스펙트럼 켜기/끄기 */
+function SpectrumButton() {
+  const state = useSpectrumState();
+  const status = usePlayer((s) => s.status);
+  const [mock, setMock] = useState(false);
+
+  useEffect(() => {
+    api.config().then((c) => setMock(c.mock)).catch(() => {});
+  }, []);
+
+  // 목 데이터 모드: 실제 소리가 없으므로 재생 상태에 맞춰 테스트 신호를 켜고 끈다
+  useEffect(() => {
+    if (mock) spectrum.setTestSignalActive(status === 'playing');
+  }, [mock, status, state]);
+
+  if (!mock && !spectrum.supported) return null;
+
+  const onClick = async () => {
+    if (state !== 'off') return spectrum.stop();
+    if (mock) return spectrum.startTestSignal();
+    toast("공유 창에서 '이 탭'을 선택하고 '탭 오디오도 공유'를 켜 주세요");
+    try {
+      await spectrum.start();
+      toast('실시간 스펙트럼을 켰습니다');
+    } catch (err) {
+      toast((err as Error).message);
+    }
+  };
+
+  return (
+    <IconButton
+      label={state === 'on' ? '실시간 스펙트럼 끄기' : '실시간 스펙트럼 켜기'}
+      className="icon-btn--toggle"
+      active={state === 'on'}
+      disabled={state === 'starting'}
+      onClick={onClick}
+    >
+      <MdGraphicEq />
+    </IconButton>
+  );
+}
+
 export function PlayerBar() {
   const item = usePlayer((s) => s.queue[s.index]);
   const hasQueue = usePlayer((s) => s.queue.length > 0);
@@ -165,6 +212,7 @@ export function PlayerBar() {
 
   return (
     <div className={`player-bar ${npOpen ? 'player-bar--np' : ''}`} onClick={() => setNp(!npOpen)}>
+      <SpectrumBackground />
       <ProgressBar className="player-bar__progress" />
 
       <div className="player-bar__left" onClick={(e) => e.stopPropagation()}>
@@ -193,6 +241,7 @@ export function PlayerBar() {
       </div>
 
       <div className="player-bar__right" onClick={(e) => e.stopPropagation()}>
+        <SpectrumButton />
         <Volume />
         <RepeatButton />
         <ShuffleButton />

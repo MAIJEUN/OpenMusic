@@ -130,6 +130,9 @@ p {
   width: 36px;
   height: 36px;
 }
+.icon-btn:focus:not(:focus-visible) {
+  outline: none;
+}
 .icon-btn:hover:not(:disabled) {
   background: var(--bg-hover);
 }
@@ -263,8 +266,7 @@ p {
   flex: none;
 }
 
-/* 재생 중 이퀄라이저 */
-
+/* 재생 중 표시 (실시간 스펙트럼이 켜져 있으면 실제 소리에 따라 움직임) */
 .equalizer {
   display: inline-flex;
   align-items: flex-end;
@@ -275,34 +277,11 @@ p {
 .equalizer i {
   display: block;
   width: 3px;
+  height: 100%;
   background: #fff;
   border-radius: 1px;
-  animation: eq 0.9s ease-in-out infinite;
-}
-.equalizer i:nth-child(1) {
-  animation-delay: -0.3s;
-}
-.equalizer i:nth-child(2) {
-  animation-delay: -0.1s;
-}
-.equalizer i:nth-child(3) {
-  animation-delay: -0.5s;
-}
-.equalizer i:nth-child(4) {
-  animation-delay: -0.7s;
-}
-.equalizer--paused i {
-  animation: none;
-  height: 4px;
-}
-@keyframes eq {
-  0%,
-  100% {
-    height: 3px;
-  }
-  50% {
-    height: 14px;
-  }
+  transform-origin: bottom;
+  transform: scaleY(0.5);
 }
 
 /* ---------------- 레이아웃 ---------------- */
@@ -1102,6 +1081,26 @@ p {
 }
 .player-bar__mobile {
   display: none;
+}
+
+/* 재생 바 배경 스펙트럼 */
+.spectrum-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.spectrum-bg--on {
+  opacity: 1;
+}
+.player-bar > :not(.spectrum-bg) {
+  position: relative;
+}
+.player-bar > .player-bar__progress {
+  position: absolute;
 }
 
 /* 진행 막대 */

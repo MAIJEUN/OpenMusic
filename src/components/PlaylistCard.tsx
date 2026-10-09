@@ -30,7 +30,7 @@ export function PlaylistCard({ collection }: { collection: CollectionInfo }) {
     try {
       const tracks = await tracksOf(collection);
       if (!tracks.length) toast('재생할 수 있는 곡이 없습니다');
-      else player().playTracks(tracks, 0, { title: collection.title, path });
+      else player().playTracks(tracks, 0, { title: collection.title, path }, { randomStart: true });
     } catch (err) {
       toast((err as Error).message);
     } finally {

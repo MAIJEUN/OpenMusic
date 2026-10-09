@@ -47,7 +47,7 @@ export function collectionMenuItems(collection: CollectionInfo, getTracks: () =>
     }
   };
   return [
-    { label: '셔플 재생', icon: <MdShuffle />, onSelect: withTracks((t) => player().playTracks(t, 0, source, { shuffle: true })) },
+    { label: '셔플 재생', icon: <MdShuffle />, onSelect: withTracks((t) => player().playTracks(t, 0, source, { shuffle: true, randomStart: true })) },
     { label: '다음 곡으로 재생', icon: <MdPlaylistPlay />, onSelect: withTracks((t) => player().playNext(t)) },
     { label: '현재 재생목록에 추가', icon: <MdQueueMusic />, onSelect: withTracks((t) => player().addToQueue(t)) },
     'divider',

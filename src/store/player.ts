@@ -24,6 +24,7 @@ interface PlayerState {
   index: number;
   source: PlaySource | null;
   shuffle: boolean;
+  /** 셔플 모드 (재생목록을 바꿔도 유지된다) */
   /** 셔플 전 순서(uid) — 셔플 해제 시 복원 */
   originalOrder: string[] | null;
   repeat: Repeat;
@@ -34,7 +35,17 @@ interface PlayerState {
   muted: boolean;
 
   current: () => QueueItem | undefined;
-  playTracks: (tracks: Track[], startIndex?: number, source?: PlaySource | null, opts?: { shuffle?: boolean; autoplay?: boolean }) => void;
+  /**
+   * 대기열을 새로 만들고 재생한다.
+   * - opts.shuffle: true면 셔플 모드를 켠다 (생략하면 현재 셔플 모드를 따른다)
+   * - opts.randomStart: 셔플 중일 때 첫 곡도 무작위로 고른다 (재생/셔플 버튼). 없으면 startIndex 곡이 먼저 재생된다.
+   */
+  playTracks: (
+    tracks: Track[],
+    startIndex?: number,
+    source?: PlaySource | null,
+    opts?: { shuffle?: boolean; randomStart?: boolean; autoplay?: boolean },
+  ) => void;
   playNext: (tracks: Track[]) => void;
   addToQueue: (tracks: Track[]) => void;
   removeFromQueue: (uid: string) => void;
@@ -68,6 +79,12 @@ export function attachEngine(e: Engine) {
 
 const toItems = (tracks: Track[]): QueueItem[] => tracks.map((track) => ({ uid: uid(), track }));
 
+/** first를 맨 앞에 두고 나머지를 무작위로 섞는다 */
+function shuffleWithFirst(items: QueueItem[], first: QueueItem | undefined): QueueItem[] {
+  if (!first) return shuffleArray(items);
+  return [first, ...shuffleArray(items.filter((i) => i.uid !== first.uid))];
+}
+
 const POSITION_KEY = 'om-position';
 
 export const usePlayer = create<PlayerState>()(
@@ -89,6 +106,19 @@ export const usePlayer = create<PlayerState>()(
         loadCurrent(autoplay);
       };
 
+      /** 대기열 끝에서 '모두 반복'으로 처음으로 돌아갈 때. 셔플 중이면 새 순서로 다시 섞는다 */
+      const wrapAround = () => {
+        const s = get();
+        if (s.shuffle && s.queue.length > 2) {
+          const last = s.queue[s.queue.length - 1];
+          let queue = shuffleArray(s.queue);
+          // 방금 들은 곡이 바로 다시 나오지 않게
+          if (queue[0].uid === last.uid) queue = [...queue.slice(1), queue[0]];
+          set({ queue });
+        }
+        goTo(0);
+      };
+
       return {
         queue: [],
         index: 0,
@@ -108,14 +138,15 @@ export const usePlayer = create<PlayerState>()(
           if (!tracks.length) return;
           let items = toItems(tracks);
           let index = Math.min(Math.max(0, startIndex), items.length - 1);
+          const shuffle = opts.shuffle ?? get().shuffle;
           let originalOrder: string[] | null = null;
-          if (opts.shuffle) {
+          if (shuffle) {
             originalOrder = items.map((i) => i.uid);
-            items = shuffleArray(items);
+            items = shuffleWithFirst(items, opts.randomStart ? undefined : items[index]);
             index = 0;
           }
           consecutiveErrors = 0;
-          set({ queue: items, index, source, shuffle: !!opts.shuffle, originalOrder });
+          set({ queue: items, index, source, shuffle, originalOrder });
           loadCurrent(opts.autoplay ?? true);
         },
 
@@ -188,7 +219,7 @@ export const usePlayer = create<PlayerState>()(
 
         clearQueue: () => {
           engine?.pause();
-          set({ queue: [], index: 0, status: 'idle', position: 0, duration: 0, source: null, originalOrder: null, shuffle: false });
+          set({ queue: [], index: 0, status: 'idle', position: 0, duration: 0, source: null, originalOrder: null });
         },
 
         togglePlay: () => {
@@ -216,7 +247,7 @@ export const usePlayer = create<PlayerState>()(
           if (!s.queue.length) return;
           consecutiveErrors = 0;
           if (s.index < s.queue.length - 1) return goTo(s.index + 1);
-          if (s.repeat !== 'off') return goTo(0);
+          if (s.repeat !== 'off') return wrapAround();
           toast('재생목록의 마지막 곡입니다');
         },
 
@@ -276,9 +307,13 @@ export const usePlayer = create<PlayerState>()(
           }
           const current = s.queue[s.index];
           if (!s.shuffle) {
-            const before = s.queue.slice(0, s.index + 1);
-            const after = shuffleArray(s.queue.slice(s.index + 1));
-            set({ shuffle: true, originalOrder: s.queue.map((q) => q.uid), queue: [...before, ...after] });
+            // 지금 곡을 맨 앞에 두고, 이미 들은 곡을 포함한 나머지 전체를 섞는다
+            set({
+              shuffle: true,
+              originalOrder: s.queue.map((q) => q.uid),
+              queue: shuffleWithFirst(s.queue, current),
+              index: 0,
+            });
           } else {
             const byUid = new Map(s.queue.map((q) => [q.uid, q]));
             const restored: QueueItem[] = [];
@@ -324,7 +359,7 @@ export const usePlayer = create<PlayerState>()(
                 return;
               }
               if (s.index < s.queue.length - 1) return goTo(s.index + 1);
-              if (s.repeat === 'all') return goTo(0);
+              if (s.repeat === 'all') return wrapAround();
               set({ status: 'ended', position: s.duration });
               break;
             }
@@ -350,7 +385,7 @@ export const usePlayer = create<PlayerState>()(
             return;
           }
           if (s.index < s.queue.length - 1) setTimeout(() => goTo(get().index + 1), 600);
-          else if (s.repeat === 'all') setTimeout(() => goTo(0), 600);
+          else if (s.repeat === 'all') setTimeout(wrapAround, 600);
           else set({ status: 'paused' });
         },
 
