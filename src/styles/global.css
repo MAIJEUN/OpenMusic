@@ -1146,20 +1146,62 @@ p {
   align-self: stretch;
   display: flex;
   align-items: center;
-  gap: 16px;
-  min-width: min(380px, 100%);
+  min-width: 0;
   max-width: 100%;
-  padding: 0 20px;
+  /* 스펙트럼이 곡 정보 끝에서 약간 더 이어지도록 */
+  padding-right: 36px;
+}
+.player-bar__track {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+/* 곡 전환: 다음 곡은 오른쪽에서, 이전 곡은 왼쪽에서 밀려 들어온다 */
+.player-bar__track--next {
+  animation: track-in-next 0.38s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.player-bar__track--prev {
+  animation: track-in-prev 0.38s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.player-bar__track .player-bar__thumb {
+  animation: thumb-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes track-in-next {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+@keyframes track-in-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+@keyframes thumb-in {
+  from {
+    opacity: 0.3;
+    transform: scale(0.82);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-bar__track,
+  .player-bar__track .player-bar__thumb {
+    animation: none;
+  }
 }
 .player-bar__now > :not(.spectrum-bg) {
   position: relative;
 }
 .player-bar__now .spectrum-bg {
-  inset: 6px 0;
+  /* 앨범 이미지 오른쪽 끝에서 시작해 곡 정보 끝 + 여백까지 */
+  top: 6px;
+  left: 40px;
+  width: calc(100% - 40px);
   height: calc(100% - 12px);
-  /* 양 끝을 흐리게 해서 영역 경계가 티 나지 않게 */
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 40px), transparent);
 }
 .player-bar > .player-bar__progress {
   position: absolute;
@@ -1850,6 +1892,8 @@ p {
     flex: 1;
     min-width: 0;
     padding: 0;
+  }
+  .player-bar__track {
     gap: 12px;
   }
   .player-bar__progress {

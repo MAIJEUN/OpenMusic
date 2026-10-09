@@ -206,6 +206,14 @@ export function PlayerBar() {
   const npOpen = useUi((s) => s.nowPlayingOpen);
   const setNp = useUi((s) => s.setNowPlaying);
   const playing = useIsPlaying();
+  const index = usePlayer((s) => s.index);
+
+  // 곡이 바뀐 방향(다음/이전)을 기억해서 곡 정보가 그쪽에서 밀려 들어오게 한다
+  const change = useRef<{ uid?: string; index: number; dir: 'next' | 'prev' }>({ index, dir: 'next' });
+  if (item && change.current.uid !== item.uid) {
+    const dir = change.current.uid && index < change.current.index ? 'prev' : 'next';
+    change.current = { uid: item.uid, index, dir };
+  }
 
   if (!hasQueue || !item) return null;
   const t = item.track;
@@ -231,12 +239,15 @@ export function PlayerBar() {
         {/* 실시간 스펙트럼은 곡 정보 영역 뒤에만 그린다 */}
         <div className="player-bar__now">
           <SpectrumBackground />
-          <Thumb src={t.thumbnail} videoId={t.videoId} size={40} className="player-bar__thumb" />
-          <div className="player-bar__info">
-            <div className="player-bar__title" title={t.title}>
-              {t.title}
+          {/* key가 바뀌면 다시 그려지면서 곡 전환 애니메이션이 재생된다 */}
+          <div key={item.uid} className={`player-bar__track player-bar__track--${change.current.dir}`}>
+            <Thumb src={t.thumbnail} videoId={t.videoId} size={40} className="player-bar__thumb" />
+            <div className="player-bar__info">
+              <div className="player-bar__title" title={t.title}>
+                {t.title}
+              </div>
+              <div className="player-bar__sub">{[artistNames(t.artists), albumOrExtra(t)].filter(Boolean).join(' • ')}</div>
             </div>
-            <div className="player-bar__sub">{[artistNames(t.artists), albumOrExtra(t)].filter(Boolean).join(' • ')}</div>
           </div>
         </div>
       </div>
