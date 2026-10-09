@@ -87,12 +87,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Pages 주소의 경로를 알아낸다: 기본 주소면 "/OpenMusic", 사용자 도메인(예: openmusic.kro.kr)이면 ""
+      - id: pages
+        uses: actions/configure-pages@v5
       - name: Build
         run: npm run build
         env:
-          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_BASE: ${{ steps.pages.outputs.base_path }}/
           VITE_API_BASE: ${{ needs.worker.outputs.url }}
-      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

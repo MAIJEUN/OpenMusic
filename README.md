@@ -53,6 +53,14 @@ npm run dev:mock   # YouTube 접속 없이 목 데이터로 UI 확인
 3. **Settings → Pages → Source**를 **GitHub Actions**로 설정합니다.
 4. (선택) Worker 주소를 직접 지정하려면 Variables에 `API_BASE_URL`(예: `https://openmusic-api.xxx.workers.dev`)을 추가합니다.
 
+### 사용자 도메인 연결 (예: `openmusic.kro.kr`)
+
+1. 도메인 DNS에 **CNAME** 레코드를 추가합니다: `openmusic.kro.kr` → `<사용자>.github.io`
+2. 저장소 **Settings → Pages → Custom domain**에 도메인을 입력하고 저장한 뒤, DNS 확인이 끝나면 **Enforce HTTPS**를 켭니다.
+3. **Actions → Deploy → Run workflow**로 다시 배포합니다. 빌드 경로(`/OpenMusic/` ↔ `/`)는 Pages 설정에서 자동으로 감지됩니다.
+
+등록한 재생목록은 브라우저에 주소(도메인)별로 저장되므로, 도메인을 바꾸면 새 주소에서 다시 등록해야 합니다.
+
 ## 참고 / 제한
 
 - 소유자가 외부 사이트 재생을 막은 곡(오류 101/150)은 재생할 수 없어 자동으로 건너뜁니다.
