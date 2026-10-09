@@ -34,6 +34,8 @@ export interface PlaybackSettings {
   skipNonMusic: boolean;
   /** 실시간 스펙트럼이 켜져 있을 때 곡 끝의 무음 건너뛰기 */
   skipSilence: boolean;
+  /** 이 시간(초) 이상 무음이 이어지면 다음 곡으로 */
+  silenceSeconds: number;
 }
 
 export type Dialog =
@@ -78,7 +80,7 @@ export const useUi = create<UiState>()(
   persist(
     (set) => ({
       sidebarCollapsed: false,
-      playback: { crossfade: 5, skipNonMusic: true, skipSilence: true },
+      playback: { crossfade: 5, skipNonMusic: true, skipSilence: true, silenceSeconds: 3 },
       setPlayback: (patch) => set((s) => ({ playback: { ...s.playback, ...patch } })),
       nowPlayingOpen: false,
       npTab: 'upnext',
