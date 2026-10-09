@@ -1,0 +1,49 @@
+{
+  "name": "openmusic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "YouTube Music 재생목록 링크를 붙여넣으면 YouTube Music처럼 재생할 수 있는 웹 플레이어",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch server/node.ts",
+    "dev:web": "vite",
+    "dev:mock": "concurrently -k -n api,web -c blue,magenta \"tsx watch server/node.ts --mock\" \"vite\"",
+    "build": "vite build && node scripts/spa-fallback.mjs",
+    "start": "tsx server/node.ts",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p worker/tsconfig.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MAIJEUN/OpenMusic.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@hono/node-server": "^2.1.4",
+    "hono": "^4.13.13",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-icons": "^5.7.0",
+    "react-router-dom": "^7.18.4",
+    "tsx": "^4.23.15",
+    "youtubei.js": "^18.1.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261009.1",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/youtube": "^0.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "wrangler": "^4.149.0"
+  }
+}
