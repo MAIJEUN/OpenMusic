@@ -1,5 +1,5 @@
 import { useEffect, useState, type ClipboardEvent, type FormEvent } from 'react';
-import { MdLink, MdMenu, MdSearch } from 'react-icons/md';
+import { MdLink, MdMenu, MdSearch, MdSettings } from 'react-icons/md';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { parseLink, targetToPath } from '../../shared/links';
 import { useUi } from '../store/ui';
@@ -93,6 +93,9 @@ export function TopBar() {
         </IconButton>
         <IconButton label="재생목록 링크 열기" className="topbar__link-btn" onClick={() => setDialog({ type: 'addLink' })}>
           <MdLink />
+        </IconButton>
+        <IconButton label="설정" onClick={() => setDialog({ type: 'settings' })}>
+          <MdSettings />
         </IconButton>
       </div>
     </header>
