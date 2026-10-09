@@ -1082,6 +1082,7 @@ p {
 .player-bar__middle {
   flex: 1;
   min-width: 0;
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1136,8 +1137,29 @@ p {
 .spectrum-bg--on {
   opacity: 1;
 }
-.player-bar > :not(.spectrum-bg) {
+.player-bar > * {
   position: relative;
+}
+/* 곡 정보 영역: 실시간 스펙트럼이 이 영역 뒤에만 그려진다 */
+.player-bar__now {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: min(380px, 100%);
+  max-width: 100%;
+  padding: 0 20px;
+}
+.player-bar__now > :not(.spectrum-bg) {
+  position: relative;
+}
+.player-bar__now .spectrum-bg {
+  inset: 6px 0;
+  height: calc(100% - 12px);
+  /* 양 끝을 흐리게 해서 영역 경계가 티 나지 않게 */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
 }
 .player-bar > .player-bar__progress {
   position: absolute;
@@ -1822,6 +1844,12 @@ p {
   }
   .player-bar__middle {
     justify-content: flex-start;
+    gap: 12px;
+  }
+  .player-bar__now {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
     gap: 12px;
   }
   .player-bar__progress {

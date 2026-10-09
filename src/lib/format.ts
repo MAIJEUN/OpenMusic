@@ -23,8 +23,17 @@ export function formatTotal(tracks: Track[]): string {
   return `${Math.max(1, m)}분`;
 }
 
+/** YouTube가 정보가 없을 때 넣는 자리표시 값 */
+const PLACEHOLDERS = new Set(['N/A', 'n/a', '-']);
+
+/** 앨범 이름, 없으면 부가 정보(조회수 등). 'N/A' 같은 자리표시 값은 버린다 */
+export function albumOrExtra(t: Track): string {
+  const v = t.album?.name ?? t.extra ?? '';
+  return PLACEHOLDERS.has(v.trim()) ? '' : v;
+}
+
 export function trackSubtitle(t: Track): string {
-  return [artistNames(t.artists), t.album?.name ?? t.extra].filter(Boolean).join(' • ');
+  return [artistNames(t.artists), albumOrExtra(t)].filter(Boolean).join(' • ');
 }
 
 export function uid(): string {

@@ -1,7 +1,7 @@
 import { memo, type MouseEvent } from 'react';
 import { MdExplicit, MdMoreVert, MdPause, MdPlayArrow } from 'react-icons/md';
 import type { Track } from '../../shared/types';
-import { artistNames, formatTime } from '../lib/format';
+import { albumOrExtra, artistNames, formatTime } from '../lib/format';
 import { player, usePlayer } from '../store/player';
 import { Equalizer } from './Equalizer';
 import { IconButton } from './IconButton';
@@ -28,7 +28,7 @@ export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true
 
   const openMenu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(track));
   const artists = artistNames(track.artists);
-  const albumText = track.album?.name ?? track.extra ?? '';
+  const albumText = albumOrExtra(track);
 
   return (
     <div
