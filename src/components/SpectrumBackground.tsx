@@ -61,7 +61,7 @@ export function SpectrumBackground() {
       // 테마 색을 회색과 섞어 차분하게 쓴다 (몇 프레임마다 한 번만 읽음)
       if (frame++ % 8 === 0) {
         const c = readColor('--theme-1', [255, 78, 69]);
-        tint = [c[0] * 0.55 + 200 * 0.45, c[1] * 0.55 + 200 * 0.45, c[2] * 0.55 + 200 * 0.45];
+        tint = [c[0] * 0.65 + 210 * 0.35, c[1] * 0.65 + 210 * 0.35, c[2] * 0.65 + 210 * 0.35];
       }
       const n = Math.max(32, Math.min(96, Math.floor(width / 16)));
       if (bands.length !== n) {
@@ -93,8 +93,8 @@ export function SpectrumBackground() {
 
       // 면: 아주 옅은 반투명 언덕 모양
       const fill = ctx.createLinearGradient(0, height - usable, 0, height);
-      fill.addColorStop(0, rgba(tint, 0.16));
-      fill.addColorStop(1, rgba(tint, 0.02));
+      fill.addColorStop(0, rgba(tint, 0.26));
+      fill.addColorStop(1, rgba(tint, 0.04));
       ctx.beginPath();
       curve(ctx, xs, ys);
       ctx.closePath();
@@ -104,8 +104,8 @@ export function SpectrumBackground() {
       // 윤곽선: 얇고 흐리게
       ctx.beginPath();
       curve(ctx, xs, ys);
-      ctx.lineWidth = 1.25;
-      ctx.strokeStyle = rgba(tint, 0.35);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = rgba(tint, 0.55);
       ctx.stroke();
     });
 

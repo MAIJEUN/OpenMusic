@@ -1093,8 +1093,8 @@ p {
   height: 40px;
 }
 .player-bar__info {
+  /* 남는 공간을 다 쓰고, 그래도 넘치면 말줄임 */
   min-width: 0;
-  max-width: 360px;
 }
 .player-bar__title {
   font-weight: 500;
