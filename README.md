@@ -39,19 +39,29 @@ npm run dev:mock   # YouTube 접속 없이 목 데이터로 UI 확인
 
 환경 변수: `PORT`(기본 3001), `YT_LANG`(기본 `ko`), `YT_LOCATION`(기본 `KR`)
 
-## 배포 (GitHub Pages + Cloudflare Workers)
+## 배포 (Cloudflare Workers)
 
 `main` 브랜치에 푸시하면 `.github/workflows/deploy.yml`이 다음을 실행합니다.
 
-1. API를 Cloudflare Worker(`openmusic-api`)로 배포
-2. 프론트엔드를 Worker 주소로 빌드해 GitHub Pages에 배포 → `https://<사용자>.github.io/<저장소>/`
+1. 웹 앱을 빌드하고, **웹 앱 + API를 Cloudflare Worker 하나(`openmusic`)로 배포** → `https://openmusic.<계정 서브도메인>.workers.dev`
+   - `/api/*`는 Worker가 처리하고, 나머지 경로는 빌드된 정적 파일(SPA)을 제공합니다.
+2. 같은 웹 앱을 GitHub Pages에도 배포합니다(API는 1번 Worker 사용) → `https://<사용자>.github.io/<저장소>/`
 
 처음 한 번 설정:
 
-1. Cloudflare에서 **"Edit Cloudflare Workers"** 템플릿으로 API 토큰을 만들고, Workers & Pages 화면에서 **Account ID**를 확인합니다. (Workers를 처음 쓰면 workers.dev 서브도메인도 등록하세요.)
+1. Cloudflare에서 **"Edit Cloudflare Workers"** 템플릿으로 API 토큰을 만들고, Workers & Pages 화면에서 **Account ID**와 workers.dev 서브도메인을 확인합니다.
 2. GitHub 저장소 **Settings → Secrets and variables → Actions**에 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`를 추가합니다.
-3. **Settings → Pages → Source**를 **GitHub Actions**로 설정합니다.
-4. (선택) Worker 주소를 직접 지정하려면 Variables에 `API_BASE_URL`(예: `https://openmusic-api.xxx.workers.dev`)을 추가합니다.
+3. (GitHub Pages도 쓰려면) **Settings → Pages → Source**를 **GitHub Actions**로 설정합니다.
+
+로컬에서 Worker로 확인: `npm run worker:dev` (빌드 후 `wrangler dev`)
+
+### 사용자 도메인 연결 (GitHub Pages, 예: `openmusic.kro.kr`)
+
+1. 도메인 DNS에 **CNAME** 레코드를 추가합니다: `openmusic.kro.kr` → `<사용자>.github.io`
+2. 저장소 **Settings → Pages → Custom domain**에 도메인을 입력하고 저장한 뒤, DNS 확인이 끝나면 **Enforce HTTPS**를 켭니다.
+3. **Actions → Deploy → Run workflow**로 다시 배포합니다. 빌드 경로(`/OpenMusic/` ↔ `/`)는 Pages 설정에서 자동으로 감지됩니다.
+
+등록한 재생목록은 브라우저에 주소(도메인)별로 저장되므로, 주소를 바꾸면 새 주소에서 다시 등록해야 합니다.
 
 ## 참고 / 제한
 
