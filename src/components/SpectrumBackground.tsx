@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Reactive } from '../player/reactive';
 import { spectrum, toBands } from '../player/spectrum';
 import { useSpectrumState } from '../player/useSpectrum';
 
@@ -24,7 +25,7 @@ function curve(ctx: CanvasRenderingContext2D, xs: Float32Array, ys: Float32Array
   ctx.lineTo(xs[xs.length - 1], ys[ys.length - 1]);
 }
 
-/** 하단 재생 바 뒤에 그리는 실시간 오디오 스펙트럼 (차분한 곡선 그래프, 테마 색을 옅게) */
+/** 하단 재생 바 뒤에 그리는 실시간 오디오 스펙트럼 (곡선 그래프, 테마 색을 옅게) */
 export function SpectrumBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const state = useSpectrumState();
@@ -50,7 +51,7 @@ export function SpectrumBackground() {
     ro.observe(canvas);
 
     let bands = new Float32Array(0);
-    let level = new Float32Array(0);
+    let reactive = new Reactive(0);
     let xs = new Float32Array(0);
     let ys = new Float32Array(0);
     let tint: RGB = [200, 200, 200];
@@ -62,30 +63,30 @@ export function SpectrumBackground() {
         const c = readColor('--theme-1', [255, 78, 69]);
         tint = [c[0] * 0.55 + 200 * 0.45, c[1] * 0.55 + 200 * 0.45, c[2] * 0.55 + 200 * 0.45];
       }
-      const n = Math.max(24, Math.min(64, Math.floor(width / 24)));
+      const n = Math.max(32, Math.min(96, Math.floor(width / 16)));
       if (bands.length !== n) {
         bands = new Float32Array(n);
-        level = new Float32Array(n);
+        reactive = new Reactive(n, { mode: 'shape', attack: 0.9, release: 0.5 });
         xs = new Float32Array(n + 2);
         ys = new Float32Array(n + 2);
       }
       toBands(freq, rate, n, bands);
+      const level = reactive.update(bands);
 
       ctx.clearRect(0, 0, width, height);
-      const usable = height * 0.7;
+      const usable = height * 0.85;
       const step = width / (n - 1);
 
       xs[0] = 0;
       ys[0] = height;
       for (let i = 0; i < n; i++) {
-        // 이웃 대역과 평균내고(공간), 이전 프레임과 섞어(시간) 부드럽고 차분하게 움직이게 한다
-        const a = bands[Math.max(0, i - 1)];
-        const b = bands[i];
-        const c = bands[Math.min(n - 1, i + 1)];
-        const target = Math.pow((a + b * 2 + c) / 4, 1.4);
-        level[i] += (target - level[i]) * 0.22;
+        // 이웃 대역을 살짝만 섞어 곡선이 지저분하지 않게 한다 (움직임은 살림)
+        const a = level[Math.max(0, i - 1)];
+        const b = level[i];
+        const c = level[Math.min(n - 1, i + 1)];
+        const v = (a + b * 4 + c) / 6;
         xs[i + 1] = i * step;
-        ys[i + 1] = height - level[i] * usable;
+        ys[i + 1] = height - v * usable;
       }
       xs[n + 1] = width;
       ys[n + 1] = height;

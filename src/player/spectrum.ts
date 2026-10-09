@@ -76,9 +76,10 @@ class Spectrum {
   private setupAnalyser(ctx: AudioContext) {
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 4096;
-    analyser.smoothingTimeConstant = 0.78;
-    analyser.minDecibels = -90;
-    analyser.maxDecibels = -20;
+    // 너무 부드러우면 비트가 묻히므로 프레임 간 평활화를 낮게 둔다
+    analyser.smoothingTimeConstant = 0.45;
+    analyser.minDecibels = -85;
+    analyser.maxDecibels = -22;
     // 일부 브라우저는 출력에 연결되지 않은 노드를 처리하지 않으므로, 소리 0으로 출력에 연결해 둔다
     const mute = ctx.createGain();
     mute.gain.value = 0;
