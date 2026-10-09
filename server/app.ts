@@ -4,7 +4,7 @@
  */
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { ServerConfig } from '../shared/types.js';
+import type { SearchFilter, ServerConfig } from '../shared/types.js';
 import type { Provider } from './provider.js';
 
 const MIN = 60_000;
@@ -71,6 +71,12 @@ export function createApp(provider: Provider, config: ServerConfig) {
     const list = c.req.query('list')?.trim() || undefined;
     if (!v && !list) throw new HttpError(400, 'v 또는 list 값이 필요합니다.');
     return c.json(await cached(`upnext:${v}:${list}`, 10 * MIN, () => provider.upNext(v, list)));
+  });
+
+  app.get('/search', ttl(600), async (c) => {
+    const q = need(c.req.query('q'), 'q');
+    const filter: SearchFilter = c.req.query('filter') === 'video' ? 'video' : 'song';
+    return c.json(await cached(`search:${filter}:${q}`, 10 * MIN, () => provider.search(q, filter)));
   });
 
   app.get('/lyrics/:id', ttl(3600), async (c) => {

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
+  MdFavorite,
+  MdFavoriteBorder,
   MdGraphicEq,
   MdKeyboardArrowDown,
   MdKeyboardArrowUp,
@@ -20,7 +22,9 @@ import { api } from '../lib/api';
 import { spectrum } from '../player/spectrum';
 import { useSpectrumState } from '../player/useSpectrum';
 import { toast, useUi } from '../store/ui';
+import { useLibrary } from '../store/library';
 import { IconButton } from './IconButton';
+import { toggleLikeWithToast } from './menus';
 import { SpectrumBackground } from './SpectrumBackground';
 import { Thumb } from './Thumb';
 
@@ -158,6 +162,25 @@ export function ShuffleButton({ size }: { size?: 'sm' | 'md' | 'lg' }) {
   );
 }
 
+/** 지금 곡 하트(좋아요) 버튼 */
+export function CurrentHeart() {
+  const track = usePlayer((s) => s.queue[s.index]?.track);
+  const liked = useLibrary((s) => !!track && s.liked.some((t) => t.videoId === track.videoId));
+  if (!track) return null;
+  return (
+    <IconButton
+      label={liked ? '좋아요 취소' : '좋아요'}
+      className={`heart-btn ${liked ? 'heart-btn--on' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        toggleLikeWithToast(track);
+      }}
+    >
+      {liked ? <MdFavorite /> : <MdFavoriteBorder />}
+    </IconButton>
+  );
+}
+
 /** 실시간 스펙트럼 켜기/끄기 */
 function SpectrumButton() {
   const state = useSpectrumState();
@@ -249,6 +272,9 @@ export function PlayerBar() {
               <div className="player-bar__sub">{[artistNames(t.artists), albumOrExtra(t)].filter(Boolean).join(' • ')}</div>
             </div>
           </div>
+        </div>
+        <div className="player-bar__heart">
+          <CurrentHeart />
         </div>
       </div>
 

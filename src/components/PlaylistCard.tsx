@@ -3,15 +3,18 @@ import { MdMoreVert, MdPause, MdPlayArrow } from 'react-icons/md';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../../shared/types';
 import { api, loadAllTracks } from '../lib/api';
-import { collectionPath, type CollectionInfo } from '../store/library';
+import { collectionPath, likedTracks, useLibrary, type CollectionInfo } from '../store/library';
 import { player, usePlayer } from '../store/player';
 import { toast } from '../store/ui';
 import { IconButton } from './IconButton';
 import { collectionMenuItems, openMenuFromEvent } from './menus';
-import { Thumb } from './Thumb';
+import { CollectionArt } from './CollectionArt';
 
-/** 등록된 재생목록/앨범의 전체 트랙 */
+/** 재생목록/앨범의 전체 트랙 (내 재생목록·좋아요 목록은 저장된 곡) */
 export async function tracksOf(c: Pick<CollectionInfo, 'kind' | 'id'>): Promise<Track[]> {
+  const lib = useLibrary.getState();
+  if (c.kind === 'liked') return likedTracks(lib.liked);
+  if (c.kind === 'local') return lib.playlists.find((p) => p.id === c.id)?.tracks ?? [];
   if (c.kind === 'album') return (await api.album(c.id)).tracks;
   return loadAllTracks(await api.playlist(c.id));
 }
@@ -43,7 +46,7 @@ export function PlaylistCard({ collection }: { collection: CollectionInfo }) {
   return (
     <div className="media-card" onClick={() => navigate(path)} onContextMenu={menu}>
       <div className="media-card__art">
-        <Thumb src={collection.thumbnail} size={226} />
+        <CollectionArt info={collection} size={226} />
         <div className="media-card__hover">
           <IconButton label="작업 메뉴" size="sm" className="media-card__more" onClick={menu}>
             <MdMoreVert />

@@ -4,7 +4,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { useEffect, useRef, type MouseEvent } from 'react';
 import { useAsync } from '../hooks/useAsync';
-import { MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
+import { MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
 import { Link } from 'react-router-dom';
 import type { Lyrics } from '../../shared/types';
 import { api } from '../lib/api';
@@ -13,8 +13,8 @@ import { player, usePlayer, type QueueItem } from '../store/player';
 import { useUi, type NowPlayingTab } from '../store/ui';
 import { Equalizer } from './Equalizer';
 import { IconButton } from './IconButton';
-import { openMenuFromEvent, trackMenuItems } from './menus';
-import { PlayPauseIcon, ProgressBar, RepeatButton, ShuffleButton } from './PlayerBar';
+import { openMenuFromEvent, saveTracksTo, trackMenuItems } from './menus';
+import { CurrentHeart, PlayPauseIcon, ProgressBar, RepeatButton, ShuffleButton } from './PlayerBar';
 import { Thumb } from './Thumb';
 
 const TABS: { id: NowPlayingTab; label: string }[] = [
@@ -81,8 +81,13 @@ export function NowPlaying() {
 
               {/* 모바일용 정보 + 컨트롤 */}
               <div className="np__mobile-info">
-                <div className="np__mobile-title">{t.title}</div>
-                <div className="np__mobile-artist">{artistNames(t.artists)}</div>
+                <div className="np__mobile-title-row">
+                  <div className="np__mobile-text">
+                    <div className="np__mobile-title">{t.title}</div>
+                    <div className="np__mobile-artist">{artistNames(t.artists)}</div>
+                  </div>
+                  <CurrentHeart />
+                </div>
                 <ProgressBar className="np__mobile-progress" />
                 <MobileTimes />
                 <div className="np__mobile-controls">
@@ -179,18 +184,31 @@ function UpNextPanel({ onNavigate }: { onNavigate: () => void }) {
 
   return (
     <div className="upnext" ref={listRef}>
-      {source && (
+      <div className="upnext__head">
         <div className="upnext__source">
-          <span className="upnext__source-label">재생 중인 출처</span>
-          {source.path ? (
-            <Link className="upnext__source-title link" to={source.path} onClick={onNavigate}>
-              {source.title}
-            </Link>
-          ) : (
-            <span className="upnext__source-title">{source.title}</span>
+          {source && (
+            <>
+              <span className="upnext__source-label">재생 중인 출처</span>
+              {source.path ? (
+                <Link className="upnext__source-title link" to={source.path} onClick={onNavigate}>
+                  {source.title}
+                </Link>
+              ) : (
+                <span className="upnext__source-title">{source.title}</span>
+              )}
+            </>
           )}
         </div>
-      )}
+        {/* 현재 재생목록(대기열)을 내 재생목록으로 저장 */}
+        <button
+          type="button"
+          className="btn btn--outline btn--sm upnext__save"
+          disabled={!queue.length}
+          onClick={() => saveTracksTo(queue.map((q) => q.track), source?.title)}
+        >
+          <MdPlaylistAdd /> 저장
+        </button>
+      </div>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -227,7 +245,7 @@ function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; 
       e.preventDefault();
       return;
     }
-    openMenuFromEvent(e, trackMenuItems(t, item.uid));
+    openMenuFromEvent(e, trackMenuItems(t, { queueUid: item.uid }));
   };
 
   return (

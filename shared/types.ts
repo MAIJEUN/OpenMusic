@@ -51,6 +51,14 @@ export interface ContinuationPage {
   continuation?: string;
 }
 
+export type SearchFilter = 'song' | 'video';
+
+export interface SearchResult {
+  query: string;
+  filter: SearchFilter;
+  tracks: Track[];
+}
+
 export interface Lyrics {
   text: string;
   source?: string;

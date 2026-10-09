@@ -1,11 +1,13 @@
-import { memo, type MouseEvent } from 'react';
-import { MdExplicit, MdMoreVert, MdPause, MdPlayArrow } from 'react-icons/md';
+import { Fragment, memo, type MouseEvent } from 'react';
+import { MdExplicit, MdFavorite, MdFavoriteBorder, MdMoreVert, MdPause, MdPlayArrow } from 'react-icons/md';
 import type { Track } from '../../shared/types';
 import { albumOrExtra, artistNames, formatTime } from '../lib/format';
+import { useLibrary } from '../store/library';
 import { player, usePlayer } from '../store/player';
 import { Equalizer } from './Equalizer';
 import { IconButton } from './IconButton';
-import { openMenuFromEvent, trackMenuItems } from './menus';
+import { openMenuFromEvent, toggleLikeWithToast, trackMenuItems } from './menus';
+import { SortableItem, SortableList } from './sortable';
 import { Thumb } from './Thumb';
 
 interface Props {
@@ -14,11 +16,14 @@ interface Props {
   number?: number;
   showAlbum?: boolean;
   onPlay: () => void;
+  /** 내 재생목록 화면이면 그 ID (메뉴에 '이 재생목록에서 삭제' 표시) */
+  playlistId?: string;
 }
 
-export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true, onPlay }: Props) {
+export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true, onPlay, playlistId }: Props) {
   const isCurrent = usePlayer((s) => s.queue[s.index]?.track.videoId === track.videoId);
   const isPlaying = usePlayer((s) => isCurrent && (s.status === 'playing' || s.status === 'buffering' || s.status === 'loading'));
+  const liked = useLibrary((s) => s.liked.some((t) => t.videoId === track.videoId));
 
   const handlePlay = (e?: MouseEvent) => {
     e?.stopPropagation();
@@ -26,7 +31,7 @@ export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true
     else onPlay();
   };
 
-  const openMenu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(track));
+  const openMenu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(track, { playlistId }));
   const artists = artistNames(track.artists);
   const albumText = albumOrExtra(track);
 
@@ -89,6 +94,14 @@ export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true
       )}
 
       <div className="track-row__actions" onClick={(e) => e.stopPropagation()}>
+        <IconButton
+          label={liked ? '좋아요 취소' : '좋아요'}
+          size="sm"
+          className={`heart-btn ${liked ? 'heart-btn--on' : ''}`}
+          onClick={() => toggleLikeWithToast(track)}
+        >
+          {liked ? <MdFavorite /> : <MdFavoriteBorder />}
+        </IconButton>
         <IconButton label="작업 메뉴" size="sm" onClick={openMenu}>
           <MdMoreVert />
         </IconButton>
@@ -104,19 +117,38 @@ interface ListProps {
   numbered?: boolean;
   showAlbum?: boolean;
   onPlayIndex: (index: number) => void;
+  playlistId?: string;
+  /** 주면 끌어서 순서를 바꿀 수 있다 (곡은 videoId로 구분되어야 함) */
+  onMove?: (from: number, to: number) => void;
 }
 
-export function TrackList({ tracks, numbered, showAlbum, onPlayIndex }: ListProps) {
+export function TrackList({ tracks, numbered, showAlbum, onPlayIndex, playlistId, onMove }: ListProps) {
+  const row = (t: Track, i: number) => (
+    <TrackRow
+      track={t}
+      number={numbered ? i + 1 : undefined}
+      showAlbum={showAlbum}
+      onPlay={() => onPlayIndex(i)}
+      playlistId={playlistId}
+    />
+  );
+  if (onMove) {
+    return (
+      <div className="track-list track-list--sortable" role="list">
+        <SortableList ids={tracks.map((t) => t.videoId)} onMove={onMove}>
+          {tracks.map((t, i) => (
+            <SortableItem key={t.videoId} id={t.videoId}>
+              {row(t, i)}
+            </SortableItem>
+          ))}
+        </SortableList>
+      </div>
+    );
+  }
   return (
     <div className="track-list" role="table">
       {tracks.map((t, i) => (
-        <TrackRow
-          key={`${t.videoId}-${i}`}
-          track={t}
-          number={numbered ? i + 1 : undefined}
-          showAlbum={showAlbum}
-          onPlay={() => onPlayIndex(i)}
-        />
+        <Fragment key={`${t.videoId}-${i}`}>{row(t, i)}</Fragment>
       ))}
     </div>
   );

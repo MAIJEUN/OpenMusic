@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { Track } from '../../shared/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -26,6 +27,14 @@ export interface MenuState {
 
 export type NowPlayingTab = 'upnext' | 'lyrics';
 
+export type Dialog =
+  | { type: 'addLink' }
+  /** 곡들을 내 재생목록에 저장 (기존 재생목록 선택 또는 새로 만들기) */
+  | { type: 'saveTo'; tracks: Track[]; suggestedTitle?: string }
+  /** 새 재생목록 만들기 (곡을 같이 넣을 수도 있음) */
+  | { type: 'newPlaylist'; tracks?: Track[]; suggestedTitle?: string }
+  | { type: 'rename'; playlistId: string };
+
 interface UiState {
   sidebarCollapsed: boolean;
   nowPlayingOpen: boolean;
@@ -33,7 +42,7 @@ interface UiState {
   npMode: 'song' | 'video';
   toasts: Toast[];
   menu: MenuState | null;
-  dialog: 'addLink' | null;
+  dialog: Dialog | null;
   videoSlot: HTMLElement | null;
 
   toggleSidebar: () => void;
