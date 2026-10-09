@@ -5,6 +5,7 @@ import { Dialogs } from './components/Dialogs';
 import { NowPlaying } from './components/NowPlaying';
 import { PlayerBar } from './components/PlayerBar';
 import { Sidebar } from './components/Sidebar';
+import { ThemeController } from './components/ThemeController';
 import { Toasts } from './components/Toasts';
 import { TopBar } from './components/TopBar';
 import { useShortcuts } from './hooks/useShortcuts';
@@ -33,6 +34,7 @@ export default function App() {
   return (
     <div className={`app ${collapsed ? 'app--collapsed' : ''} ${hasPlayer ? 'app--has-player' : ''} ${npOpen ? 'app--np' : ''}`}>
       <ScrollToTop />
+      <ThemeController />
       <TopBar />
       <Sidebar />
       <main className="main">

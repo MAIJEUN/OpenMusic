@@ -3,6 +3,11 @@ import type { CollectionDetail, ContinuationPage, Lyrics, ServerConfig, UpNext }
 /** 배포 시 Cloudflare Worker 주소 (예: https://openmusic-api.xxx.workers.dev). 비어 있으면 같은 출처의 /api 사용 */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
 
+/** API 주소 (배포 환경에 따라 같은 출처 또는 Worker 주소) */
+export function apiUrl(path: string): string {
+  return `${API_BASE}/api${path}`;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
