@@ -56,8 +56,22 @@ jobs:
           fi
           echo "Worker URL: $url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+      # 처음 배포한 workers.dev 주소는 연결되기까지 잠시 걸릴 수 있어서 몇 번 다시 시도한다.
+      # 끝까지 실패해도 경고만 남기고 웹 배포는 계속 진행한다.
       - name: Smoke test
-        run: curl -fsS "${{ steps.url.outputs.url }}/api/config"
+        env:
+          URL: ${{ steps.url.outputs.url }}/api/config
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -sS -o body.txt -w '%{http_code}' "$URL" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "API OK: $(cat body.txt)"
+              exit 0
+            fi
+            echo "시도 $i: HTTP $code — $(head -c 200 body.txt 2>/dev/null)"
+            sleep 15
+          done
+          echo "::warning::API($URL)가 아직 응답하지 않습니다. 몇 분 뒤 브라우저로 열어 확인해 주세요."
 
   pages:
     name: Deploy web (GitHub Pages)
