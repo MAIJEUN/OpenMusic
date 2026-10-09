@@ -1,57 +1,69 @@
 import { useEffect, useState, type ClipboardEvent, type FormEvent } from 'react';
-import { MdLink, MdMenu } from 'react-icons/md';
-import { useNavigate } from 'react-router-dom';
+import { MdLink, MdMenu, MdSearch } from 'react-icons/md';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { parseLink, targetToPath } from '../../shared/links';
-import { toast, useUi } from '../store/ui';
+import { useUi } from '../store/ui';
 import { IconButton } from './IconButton';
 import { Logo } from './Logo';
 
-/** 상단의 링크 입력칸: 붙여넣거나 Enter를 누르면 바로 연다 */
-function LinkBox() {
+/** 상단 입력칸: 검색어면 노래 검색, 재생목록/곡 링크면 바로 연다 */
+export function SearchBox({ autoFocus }: { autoFocus?: boolean }) {
   const navigate = useNavigate();
-  const [value, setValue] = useState('');
+  const location = useLocation();
+  const [params] = useSearchParams();
+  const urlQuery = location.pathname === '/search' ? (params.get('q') ?? '') : '';
+  const [value, setValue] = useState(urlQuery);
+  useEffect(() => setValue(urlQuery), [urlQuery]);
 
-  const open = (text: string) => {
-    const target = parseLink(text);
-    if (!target) {
-      toast('YouTube Music 재생목록 링크를 입력해 주세요');
-      return false;
+  const submit = (text: string) => {
+    const q = text.trim();
+    if (!q) return;
+    const target = parseLink(q);
+    if (target) {
+      setValue('');
+      navigate(targetToPath(target));
+      return;
     }
-    setValue('');
-    navigate(targetToPath(target));
-    return true;
-  };
-
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (value.trim()) open(value);
+    const filter = params.get('filter');
+    navigate(`/search?q=${encodeURIComponent(q)}${location.pathname === '/search' && filter ? `&filter=${filter}` : ''}`);
   };
 
   const onPaste = (e: ClipboardEvent<HTMLInputElement>) => {
     const text = e.clipboardData.getData('text');
     if (parseLink(text)) {
       e.preventDefault();
-      open(text);
+      submit(text);
       (e.target as HTMLInputElement).blur();
     }
   };
 
   return (
-    <form className="linkbox" onSubmit={onSubmit}>
-      <MdLink className="linkbox__icon" />
+    <form
+      className="linkbox"
+      role="search"
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        submit(value);
+        (document.activeElement as HTMLElement | null)?.blur();
+      }}
+    >
+      <MdSearch className="linkbox__icon" />
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onPaste={onPaste}
-        placeholder="YouTube Music 재생목록 링크 붙여넣기"
-        aria-label="재생목록 링크"
+        placeholder="노래 검색 또는 재생목록 링크 붙여넣기"
+        aria-label="노래 검색 또는 링크"
         spellCheck={false}
+        autoFocus={autoFocus}
+        enterKeyHint="search"
       />
     </form>
   );
 }
 
 export function TopBar() {
+  const navigate = useNavigate();
   const toggleSidebar = useUi((s) => s.toggleSidebar);
   const setDialog = useUi((s) => s.setDialog);
   const npOpen = useUi((s) => s.nowPlayingOpen);
@@ -73,10 +85,13 @@ export function TopBar() {
         <Logo />
       </div>
       <div className="topbar__center">
-        <LinkBox />
+        <SearchBox />
       </div>
       <div className="topbar__right">
-        <IconButton label="재생목록 링크 열기" className="topbar__link-btn" onClick={() => setDialog('addLink')}>
+        <IconButton label="검색" className="topbar__link-btn" onClick={() => navigate('/search')}>
+          <MdSearch />
+        </IconButton>
+        <IconButton label="재생목록 링크 열기" className="topbar__link-btn" onClick={() => setDialog({ type: 'addLink' })}>
           <MdLink />
         </IconButton>
       </div>

@@ -11,7 +11,8 @@ import { TrackList } from '../components/TrackRow';
 import { useAsync } from '../hooks/useAsync';
 import { api, loadAllTracks } from '../lib/api';
 import { formatTotal } from '../lib/format';
-import { useLibrary, type CollectionInfo } from '../store/library';
+import { LIKED_ID, isLocalId, useLibrary, type CollectionInfo } from '../store/library';
+import { LikedPage, LocalPlaylistPage } from './MyPlaylistPage';
 import { player, usePlayer } from '../store/player';
 import { toast } from '../store/ui';
 
@@ -19,6 +20,8 @@ export function PlaylistRoute() {
   const [params] = useSearchParams();
   const id = params.get('list');
   if (!id) return <Navigate to="/" replace />;
+  if (id === LIKED_ID) return <LikedPage />;
+  if (isLocalId(id)) return <LocalPlaylistPage key={id} id={id} />;
   return <RemoteCollection key={id} kind={isMixList(id) ? 'radio' : 'playlist'} id={id} />;
 }
 
@@ -77,7 +80,8 @@ function RemoteCollection({ kind, id }: { kind: 'playlist' | 'album' | 'radio'; 
   // 연 재생목록/앨범은 사이드바에 자동 등록 (이미 있으면 제목·썸네일 갱신)
   useEffect(() => {
     if (!data || data.kind === 'radio') return;
-    useLibrary.getState().register(toCollectionInfo(data));
+    const info = toCollectionInfo(data);
+    useLibrary.getState().register({ ...info, kind: data.kind === 'album' ? 'album' : 'playlist' });
   }, [data]);
 
   if (loading) return <Loading />;

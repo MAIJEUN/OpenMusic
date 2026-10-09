@@ -11,6 +11,7 @@ import { TopBar } from './components/TopBar';
 import { useShortcuts } from './hooks/useShortcuts';
 import { BrowseRoute, PlaylistRoute } from './pages/CollectionPage';
 import { HomePage } from './pages/HomePage';
+import { SearchPage } from './pages/SearchPage';
 import { WatchPage } from './pages/WatchPage';
 import { PlayerHost } from './player/PlayerHost';
 import { usePlayer } from './store/player';
@@ -40,6 +41,7 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/search" element={<SearchPage />} />
           <Route path="/playlist" element={<PlaylistRoute />} />
           <Route path="/browse/:id" element={<BrowseRoute />} />
           <Route path="/watch" element={<WatchPage />} />

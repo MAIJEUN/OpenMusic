@@ -157,6 +157,17 @@ export const mockProvider: Provider = {
     return { playlistId: `RDAMVM${videoId ?? ''}`, title: '뮤직 스테이션', tracks };
   },
 
+  async search(query, filter) {
+    await delay();
+    const seed = [...query].reduce((a, c) => a + c.charCodeAt(0), 0);
+    const tracks = tracksRange(seed * 7 + 6000, 20).map((t) =>
+      filter === 'video'
+        ? { ...t, isVideo: true, album: undefined, extra: t.extra ?? '조회수 120만회', thumbnail: img(`v${t.videoId}`) }
+        : { ...t, isVideo: false },
+    );
+    return { query, filter, tracks };
+  },
+
   async lyrics(videoId) {
     await delay();
     if (videoId.endsWith('3')) return null;

@@ -3,7 +3,7 @@
  * 재생 자체는 브라우저의 YouTube IFrame Player가 담당하고, 서버는 메타데이터만 가져온다.
  */
 import { Innertube, YTMusic, YTNodes } from 'youtubei.js';
-import type { ArtistRef, CollectionDetail, ContinuationPage, Lyrics, Track, UpNext } from '../shared/types.js';
+import type { ArtistRef, CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
 import { stripVL } from '../shared/links.js';
 import { bestThumb, parseRuns, runsOf, textOf, trackFromListItem, trackFromPanelVideo, type TrackFallback } from './normalize.js';
 import type { Provider } from './provider.js';
@@ -197,10 +197,29 @@ async function lyrics(videoId: string): Promise<Lyrics | null> {
   }
 }
 
+async function search(query: string, filter: SearchFilter): Promise<SearchResult> {
+  const music = (await yt()).music;
+  const res: AnyNode = await music.search(query, { type: filter });
+  const tracks: Track[] = [];
+  const seen = new Set<string>();
+  const shelves: AnyNode[] = Array.from(res.contents ?? []);
+  for (const node of shelves) {
+    const items: AnyNode[] =
+      node?.type === 'ItemSection' ? Array.from(node.contents ?? []).flatMap((n: AnyNode) => Array.from(n?.contents ?? [])) : Array.from(node?.contents ?? []);
+    for (const t of tracksFrom(items)) {
+      if (seen.has(t.videoId)) continue;
+      seen.add(t.videoId);
+      tracks.push(filter === 'video' ? { ...t, isVideo: true } : t);
+    }
+  }
+  return { query, filter, tracks };
+}
+
 export const youtubeProvider: Provider = {
   playlist: getPlaylist,
   continuation: getContinuation,
   album: getAlbum,
   upNext,
   lyrics,
+  search,
 };

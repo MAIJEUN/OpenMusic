@@ -1,4 +1,4 @@
-import type { CollectionDetail, ContinuationPage, Lyrics, ServerConfig, UpNext } from '../../shared/types';
+import type { CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, UpNext } from '../../shared/types';
 
 /** 배포 시 Cloudflare Worker 주소 (예: https://openmusic-api.xxx.workers.dev). 비어 있으면 같은 출처의 /api 사용 */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
@@ -61,6 +61,7 @@ export const api = {
   album: (id: string) => cachedGet<CollectionDetail>(`/album/${enc(id)}`),
   upNext: (videoId?: string, list?: string) =>
     cachedGet<UpNext>(`/upnext?${videoId ? `v=${enc(videoId)}` : ''}${list ? `&list=${enc(list)}` : ''}`),
+  search: (q: string, filter: SearchFilter = 'song') => cachedGet<SearchResult>(`/search?q=${enc(q)}&filter=${filter}`),
   lyrics: (videoId: string) => cachedGet<Lyrics | null>(`/lyrics/${enc(videoId)}`, 60 * 60_000),
 };
 
