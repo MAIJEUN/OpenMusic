@@ -1,10 +1,9 @@
 /**
- * YouTube / YouTube Music 링크(또는 ID)를 앱 내부 대상(재생목록, 앨범, 아티스트, 곡)으로 해석한다.
+ * YouTube / YouTube Music 링크(또는 ID)를 앱 내부 대상(재생목록, 앨범, 곡)으로 해석한다.
  */
 export type LinkTarget =
   | { type: 'playlist'; id: string }
   | { type: 'album'; id: string }
-  | { type: 'artist'; id: string }
   | { type: 'watch'; videoId: string; list?: string };
 
 const PLAYLIST_ID = /^(PL|OLAK5uy_|RDCLAK5uy_|RD|UU|LL|FL|OL|VL|LM|SE)[\w-]*$/;
@@ -26,7 +25,6 @@ export function parseLink(raw: string): LinkTarget | null {
   // URL이 아닌 순수 ID
   if (!/^[a-z]+:\/\//i.test(input) && !input.includes('/') && !input.includes('?')) {
     if (input.startsWith('MPRE')) return { type: 'album', id: input };
-    if (input.startsWith('UC') && input.length === 24) return { type: 'artist', id: input };
     if (PLAYLIST_ID.test(input) && input.length > 11) return { type: 'playlist', id: stripVL(input) };
     if (VIDEO_ID.test(input)) return { type: 'watch', videoId: input };
     return null;
@@ -65,12 +63,8 @@ export function parseLink(raw: string): LinkTarget | null {
   if (browse) {
     const id = browse[1];
     if (id.startsWith('MPRE')) return { type: 'album', id };
-    if (id.startsWith('UC')) return { type: 'artist', id };
     if (id.startsWith('VL')) return { type: 'playlist', id: stripVL(id) };
   }
-
-  const channel = path.match(/^\/channel\/(UC[\w-]{22})/);
-  if (channel) return { type: 'artist', id: channel[1] };
 
   if (list) return { type: 'playlist', id: stripVL(list) };
   return null;
@@ -83,8 +77,6 @@ export function targetToPath(t: LinkTarget): string {
       return `/playlist?list=${encodeURIComponent(t.id)}`;
     case 'album':
       return `/browse/${encodeURIComponent(t.id)}`;
-    case 'artist':
-      return `/channel/${encodeURIComponent(t.id)}`;
     case 'watch':
       return `/watch?v=${encodeURIComponent(t.videoId)}${t.list ? `&list=${encodeURIComponent(t.list)}` : ''}`;
   }

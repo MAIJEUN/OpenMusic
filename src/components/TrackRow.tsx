@@ -1,14 +1,10 @@
 import { memo, type MouseEvent } from 'react';
-import { MdExplicit, MdMoreVert, MdPause, MdPlayArrow, MdThumbUp, MdThumbUpOffAlt } from 'react-icons/md';
-import { Link, useNavigate } from 'react-router-dom';
+import { MdExplicit, MdMoreVert, MdPause, MdPlayArrow } from 'react-icons/md';
 import type { Track } from '../../shared/types';
-import { formatTime } from '../lib/format';
-import { useLibrary } from '../store/library';
+import { artistNames, formatTime } from '../lib/format';
 import { player, usePlayer } from '../store/player';
-import { toast } from '../store/ui';
 import { Equalizer } from './Equalizer';
 import { IconButton } from './IconButton';
-import { ArtistLinks } from './Links';
 import { openMenuFromEvent, trackMenuItems } from './menus';
 import { Thumb } from './Thumb';
 
@@ -21,10 +17,8 @@ interface Props {
 }
 
 export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true, onPlay }: Props) {
-  const navigate = useNavigate();
   const isCurrent = usePlayer((s) => s.queue[s.index]?.track.videoId === track.videoId);
   const isPlaying = usePlayer((s) => isCurrent && (s.status === 'playing' || s.status === 'buffering' || s.status === 'loading'));
-  const liked = useLibrary((s) => s.liked.some((t) => t.videoId === track.videoId));
 
   const handlePlay = (e?: MouseEvent) => {
     e?.stopPropagation();
@@ -32,7 +26,9 @@ export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true
     else onPlay();
   };
 
-  const openMenu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(track, { navigate }));
+  const openMenu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(track));
+  const artists = artistNames(track.artists);
+  const albumText = track.album?.name ?? track.extra ?? '';
 
   return (
     <div
@@ -77,45 +73,22 @@ export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true
         </div>
         <div className="track-row__sub">
           {track.explicit && <MdExplicit className="explicit" aria-label="청소년 유해" />}
-          <ArtistLinks artists={track.artists} />
-          {(showAlbum && track.album) || track.extra ? (
-            <span className="track-row__mobile-extra">
-              {' • '}
-              {track.album?.name ?? track.extra}
-            </span>
-          ) : null}
+          {[artists, showAlbum ? albumText : ''].filter(Boolean).join(' • ')}
         </div>
       </div>
 
-      <div className="track-row__col track-row__artists">
+      <div className="track-row__col track-row__artists" title={artists}>
         {track.explicit && <MdExplicit className="explicit" aria-label="청소년 유해" />}
-        <ArtistLinks artists={track.artists} />
+        {artists}
       </div>
 
       {showAlbum && (
-        <div className="track-row__col track-row__album">
-          {track.album?.id ? (
-            <Link to={`/browse/${track.album.id}`} className="link" onClick={(e) => e.stopPropagation()}>
-              {track.album.name}
-            </Link>
-          ) : (
-            <span>{track.album?.name ?? track.extra ?? ''}</span>
-          )}
+        <div className="track-row__col track-row__album" title={albumText}>
+          {albumText}
         </div>
       )}
 
       <div className="track-row__actions" onClick={(e) => e.stopPropagation()}>
-        <IconButton
-          label={liked ? '좋아요 취소' : '좋아요'}
-          size="sm"
-          className={`track-row__like ${liked ? 'track-row__like--on' : ''}`}
-          onClick={() => {
-            const now = useLibrary.getState().toggleLike(track);
-            toast(now ? '좋아요 표시한 음악에 추가됨' : '좋아요 표시한 음악에서 삭제됨');
-          }}
-        >
-          {liked ? <MdThumbUp /> : <MdThumbUpOffAlt />}
-        </IconButton>
         <IconButton label="작업 메뉴" size="sm" onClick={openMenu}>
           <MdMoreVert />
         </IconButton>

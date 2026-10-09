@@ -4,11 +4,10 @@
  */
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { SearchFilter, ServerConfig } from '../shared/types.js';
+import type { ServerConfig } from '../shared/types.js';
 import type { Provider } from './provider.js';
 
 const MIN = 60_000;
-const FILTERS: SearchFilter[] = ['all', 'song', 'video', 'album', 'playlist', 'artist'];
 
 class HttpError extends Error {
   constructor(
@@ -64,24 +63,6 @@ export function createApp(provider: Provider, config: ServerConfig) {
     return c.json(await cached(`album:${id}`, 30 * MIN, () => provider.album(id)));
   });
 
-  app.get('/artist/:id', ttl(1800), async (c) => {
-    const id = need(c.req.param('id'), 'id');
-    return c.json(await cached(`artist:${id}`, 30 * MIN, () => provider.artist(id)));
-  });
-
-  app.get('/search', ttl(600), async (c) => {
-    const q = need(c.req.query('q'), 'q');
-    const f = c.req.query('filter') as SearchFilter | undefined;
-    const filter: SearchFilter = f && FILTERS.includes(f) ? f : 'all';
-    return c.json(await cached(`search:${filter}:${q}`, 10 * MIN, () => provider.search(q, filter)));
-  });
-
-  app.get('/suggestions', ttl(600), async (c) => {
-    const q = c.req.query('q')?.trim() ?? '';
-    if (!q) return c.json({ queries: [], items: [] });
-    return c.json(await cached(`suggest:${q}`, 10 * MIN, () => provider.suggestions(q)));
-  });
-
   app.get('/upnext', ttl(600), async (c) => {
     const v = c.req.query('v')?.trim() || undefined;
     const list = c.req.query('list')?.trim() || undefined;
@@ -94,15 +75,6 @@ export function createApp(provider: Provider, config: ServerConfig) {
     const lyrics = await cached(`lyrics:${id}`, 60 * MIN, () => provider.lyrics(id));
     return c.json(lyrics);
   });
-
-  app.get('/related/:id', ttl(1800), async (c) => {
-    const id = need(c.req.param('id'), 'id');
-    return c.json(await cached(`related:${id}`, 30 * MIN, () => provider.related(id)));
-  });
-
-  app.get('/home', ttl(900), async (c) => c.json(await cached('home', 15 * MIN, () => provider.home())));
-
-  app.get('/explore', ttl(1800), async (c) => c.json(await cached('explore', 30 * MIN, () => provider.explore())));
 
   app.notFound((c) => c.json({ error: '알 수 없는 API입니다.' }, 404));
 

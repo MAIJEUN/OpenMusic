@@ -2,7 +2,7 @@
  * 개발/오프라인 테스트용 목 데이터 공급자. `MOCK=1` 또는 `--mock`으로 실행하면 사용된다.
  * 실제 YouTube에 접속하지 않고 UI 흐름 전체를 확인할 수 있다.
  */
-import type { ArtistDetail, Card, CollectionDetail, Section, Track } from '../shared/types.js';
+import type { CollectionDetail, Track } from '../shared/types.js';
 import type { Provider } from './provider.js';
 
 const ARTISTS = [
@@ -65,41 +65,6 @@ function makeTrack(n: number): Track {
     extra: isVideo ? `조회수 ${Math.floor(r() * 900) + 10}만회` : undefined,
   };
 }
-
-const trackCard = (t: Track): Card => ({
-  kind: t.isVideo ? 'video' : 'song',
-  id: t.videoId,
-  title: t.title,
-  subtitle: [t.isVideo ? '동영상' : '노래', t.artists.map((a) => a.name).join(', '), t.album?.name ?? t.extra]
-    .filter(Boolean)
-    .join(' • '),
-  thumbnail: t.thumbnail,
-  track: t,
-});
-
-const albumCard = (a: (typeof ALBUMS)[number]): Card => ({
-  kind: 'album',
-  id: a.id,
-  title: a.name,
-  subtitle: `앨범 • ${a.artist.name} • ${a.year}`,
-  thumbnail: img(a.id),
-});
-
-const playlistCard = (i: number): Card => ({
-  kind: 'playlist',
-  id: `PLmockPlaylist${String(i).padStart(4, '0')}`,
-  title: ['K-POP 히트곡', '집중할 때 듣는 음악', '드라이브 플레이리스트', '비 오는 날', '운동할 때', '새벽 감성', '2010년대 발라드', '최신 인디'][i % 8],
-  subtitle: `재생목록 • OpenMusic • ${30 + i * 7}곡`,
-  thumbnail: img(`pl${i}`),
-});
-
-const artistCard = (a: (typeof ARTISTS)[number], i: number): Card => ({
-  kind: 'artist',
-  id: a.id,
-  title: a.name,
-  subtitle: `구독자 ${100 + i * 37}만명`,
-  thumbnail: img(a.id),
-});
 
 function tracksRange(start: number, count: number) {
   return Array.from({ length: count }, (_, i) => makeTrack(start + i));
@@ -181,80 +146,6 @@ export const mockProvider: Provider = {
       thumbnail: img(a.id),
       year: a.year,
       tracks,
-      related: [
-        {
-          title: '이 아티스트의 다른 앨범',
-          layout: 'carousel',
-          items: ALBUMS.filter((x) => x.artist.id === a.artist.id && x.id !== a.id).map(albumCard),
-        },
-      ],
-    };
-  },
-
-  async artist(id) {
-    await delay();
-    const idx = Math.max(0, ARTISTS.findIndex((a) => a.id === id));
-    const a = ARTISTS[idx];
-    const songs = tracksRange(idx * 50 + 500, 5).map((t) => ({ ...t, artists: [a], extra: `${idx + 3}억회 재생` }));
-    const detail: ArtistDetail = {
-      id: a.id,
-      name: a.name,
-      thumbnail: img(a.id),
-      subscribers: `구독자 ${120 + idx * 40}만명`,
-      description: `${a.name}의 아티스트 페이지입니다. (목 데이터)`,
-      songs,
-      songsPlaylistId: `OLAK5uy_mockSongs${idx}`,
-      sections: [
-        { title: '앨범', layout: 'carousel', items: ALBUMS.filter((x) => x.artist.id === a.id).map(albumCard) },
-        { title: '싱글 및 EP', layout: 'carousel', items: ALBUMS.slice(0, 6).map(albumCard) },
-        { title: '동영상', layout: 'carousel', items: tracksRange(idx * 50 + 700, 8).map((t) => trackCard({ ...t, isVideo: true, thumbnail: img(`v${t.videoId}`) })) },
-        { title: '팬들이 좋아할 만한 콘텐츠', layout: 'carousel', items: ARTISTS.filter((x) => x.id !== a.id).map(artistCard) },
-      ],
-    };
-    return detail;
-  },
-
-  async search(query, filter) {
-    await delay();
-    const seed = [...query].reduce((a, c) => a + c.charCodeAt(0), 0);
-    const songs = tracksRange(seed, 20).filter((t) => !t.isVideo).map(trackCard);
-    const videos = tracksRange(seed + 50, 12).map((t) => trackCard({ ...t, isVideo: true, album: undefined, thumbnail: img(`v${t.videoId}`) }));
-    const albums = ALBUMS.slice(seed % 8, (seed % 8) + 6).map(albumCard);
-    const playlists = Array.from({ length: 6 }, (_, i) => playlistCard(i + seed));
-    const artists = ARTISTS.slice(0, 4).map(artistCard);
-    const sections: Section[] = [];
-    const add = (title: string, items: Card[], n: number) => sections.push({ title, layout: 'list', items: items.slice(0, n) });
-    switch (filter) {
-      case 'song':
-        add('노래', songs, 20);
-        break;
-      case 'video':
-        add('동영상', videos, 20);
-        break;
-      case 'album':
-        add('앨범', albums, 20);
-        break;
-      case 'playlist':
-        add('커뮤니티 재생목록', playlists, 20);
-        break;
-      case 'artist':
-        add('아티스트', artists, 20);
-        break;
-      default:
-        add('노래', songs, 4);
-        add('동영상', videos, 3);
-        add('앨범', albums, 3);
-        add('커뮤니티 재생목록', playlists, 3);
-        add('아티스트', artists, 3);
-    }
-    return { query, top: filter === 'all' ? artistCard(ARTISTS[seed % ARTISTS.length], 2) : undefined, sections };
-  },
-
-  async suggestions(query) {
-    const q = query.trim();
-    return {
-      queries: q ? [q, `${q} 노래`, `${q} 플레이리스트`, `${q} 라이브`, `${q} 가사`] : [],
-      items: q ? [artistCard(ARTISTS[q.length % ARTISTS.length], 1), trackCard(makeTrack(q.length * 11))] : [],
     };
   },
 
@@ -272,42 +163,6 @@ export const mockProvider: Provider = {
     return { text: LYRICS, source: '출처: OpenMusic Mock Lyrics' };
   },
 
-  async related(videoId) {
-    await delay();
-    const seed = [...videoId].reduce((a, c) => a + c.charCodeAt(0), 0);
-    return {
-      sections: [
-        { title: '추천 노래', layout: 'carousel', items: tracksRange(seed + 3000, 12).map(trackCard) },
-        { title: '추천 재생목록', layout: 'carousel', items: Array.from({ length: 6 }, (_, i) => playlistCard(i)) },
-        { title: '비슷한 아티스트', layout: 'carousel', items: ARTISTS.map(artistCard) },
-      ],
-    };
-  },
-
-  async home() {
-    await delay();
-    return {
-      sections: [
-        { title: '빠른 선곡', strapline: '이 노래로 뮤직 스테이션 시작하기', layout: 'carousel', items: tracksRange(4000, 16).map(trackCard) },
-        { title: '추천 앨범', layout: 'carousel', items: ALBUMS.map(albumCard) },
-        { title: '믹스 플레이리스트', layout: 'carousel', items: Array.from({ length: 8 }, (_, i) => playlistCard(i)) },
-        { title: '추천 뮤직비디오', layout: 'carousel', items: tracksRange(4100, 10).map((t) => trackCard({ ...t, isVideo: true, thumbnail: img(`v${t.videoId}`) })) },
-        { title: '좋아하실 만한 아티스트', layout: 'carousel', items: ARTISTS.map(artistCard) },
-      ],
-    };
-  },
-
-  async explore() {
-    await delay();
-    return {
-      sections: [
-        { title: '최신 앨범 및 싱글', layout: 'carousel', items: [...ALBUMS].reverse().map(albumCard) },
-        { title: '인기곡', layout: 'carousel', items: tracksRange(5000, 20).map(trackCard) },
-        { title: '분위기 및 장르', layout: 'carousel', items: Array.from({ length: 8 }, (_, i) => playlistCard(i + 3)) },
-        { title: '새로운 뮤직비디오', layout: 'carousel', items: tracksRange(5100, 10).map((t) => trackCard({ ...t, isVideo: true, thumbnail: img(`v${t.videoId}`) })) },
-      ],
-    };
-  },
 };
 
 /** 목 썸네일: 시드에 따라 그라데이션 SVG 생성 */

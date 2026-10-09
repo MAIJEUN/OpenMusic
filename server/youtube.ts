@@ -3,35 +3,10 @@
  * 재생 자체는 브라우저의 YouTube IFrame Player가 담당하고, 서버는 메타데이터만 가져온다.
  */
 import { Innertube, YTMusic, YTNodes } from 'youtubei.js';
-import type {
-  ArtistDetail,
-  ArtistRef,
-  Card,
-  CollectionDetail,
-  ContinuationPage,
-  FeedPage,
-  Lyrics,
-  SearchFilter,
-  SearchResult,
-  Section,
-  Track,
-  UpNext,
-} from '../shared/types.js';
+import type { ArtistRef, CollectionDetail, ContinuationPage, Lyrics, Track, UpNext } from '../shared/types.js';
 import { stripVL } from '../shared/links.js';
-import {
-  bestThumb,
-  cardFromAny,
-  pageTypeOf,
-  parseRuns,
-  runsOf,
-  sectionFromShelf,
-  sectionsFrom,
-  textOf,
-  trackFromListItem,
-  trackFromPanelVideo,
-  type TrackFallback,
-} from './normalize.js';
-import type { Provider, Suggestions } from './provider.js';
+import { bestThumb, parseRuns, runsOf, textOf, trackFromListItem, trackFromPanelVideo, type TrackFallback } from './normalize.js';
+import type { Provider } from './provider.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any;
@@ -175,112 +150,7 @@ async function getAlbum(id: string): Promise<CollectionDetail> {
     year: h.year,
     tracks: tracksFrom(album.contents, fallback),
     audioPlaylistId,
-    related: sectionsFrom(album.sections),
   };
-}
-
-async function getArtist(id: string): Promise<ArtistDetail> {
-  const music = (await yt()).music;
-  const artist = await music.getArtist(id);
-  const h: AnyNode = artist.header;
-  const name = textOf(h?.title);
-  const thumbnail = bestThumb(h?.thumbnail) ?? bestThumb(h?.foreground_thumbnail);
-  const subscribers =
-    textOf(h?.subscription_button?.subscriber_count_text) ||
-    textOf(h?.subscription_button?.short_subscriber_count_text) ||
-    textOf(h?.monthly_listener_count) ||
-    undefined;
-
-  const sections: AnyNode[] = Array.from(artist.sections ?? []);
-  const songShelf = sections.find((s) => s?.type === 'MusicShelf');
-  const songs = songShelf ? tracksFrom(songShelf.contents) : [];
-  const songsBrowse: string | undefined = songShelf?.endpoint?.payload?.browseId;
-
-  return {
-    id,
-    name,
-    thumbnail,
-    description: textOf(h?.description) || undefined,
-    subscribers,
-    songs,
-    songsPlaylistId: songsBrowse?.startsWith('VL') ? stripVL(songsBrowse) : undefined,
-    sections: sectionsFrom(sections.filter((s) => s !== songShelf)),
-  };
-}
-
-function cardFromEndpoint(ep: AnyNode, title: string, subtitle: string, thumbnail?: string, subtitleRuns: AnyNode[] = []): Card | null {
-  const pt = pageTypeOf(ep);
-  const browseId: string | undefined = ep?.payload?.browseId;
-  if (pt === 'MUSIC_PAGE_TYPE_ALBUM' && browseId) return { kind: 'album', id: browseId, title, subtitle, thumbnail };
-  if (pt === 'MUSIC_PAGE_TYPE_PLAYLIST' && browseId) return { kind: 'playlist', id: stripVL(browseId), title, subtitle, thumbnail };
-  if ((pt === 'MUSIC_PAGE_TYPE_ARTIST' || pt === 'MUSIC_PAGE_TYPE_USER_CHANNEL') && browseId)
-    return { kind: 'artist', id: browseId, title, subtitle, thumbnail };
-  const videoId: string | undefined = ep?.payload?.videoId;
-  if (videoId) {
-    const info = parseRuns(subtitleRuns);
-    const vt = ep?.payload?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType;
-    const track: Track = {
-      videoId,
-      title,
-      artists: info.artists,
-      album: info.album,
-      duration: info.duration,
-      thumbnail,
-      isVideo: vt ? vt !== 'MUSIC_VIDEO_TYPE_ATV' : undefined,
-    };
-    return { kind: track.isVideo ? 'video' : 'song', id: videoId, title, subtitle, thumbnail, track };
-  }
-  return null;
-}
-
-async function search(query: string, filter: SearchFilter): Promise<SearchResult> {
-  const music = (await yt()).music;
-  const res = await music.search(query, { type: filter });
-  const contents: AnyNode[] = Array.from(res.contents ?? []);
-  const result: SearchResult = { query, sections: [] };
-
-  const corrected = res.did_you_mean ?? res.showing_results_for;
-  if (corrected) result.correctedQuery = textOf((corrected as AnyNode).corrected_query) || undefined;
-
-  for (const node of contents) {
-    if (node?.type === 'MusicCardShelf') {
-      const thumbnail = bestThumb(node.thumbnail);
-      const top = cardFromEndpoint(node.on_tap, textOf(node.title), textOf(node.subtitle), thumbnail, runsOf(node.subtitle));
-      if (top) result.top = top;
-      const extra = (Array.from(node.contents ?? []) as AnyNode[]).map(cardFromAny).filter((c): c is Card => !!c);
-      if (extra.length) result.sections.push({ title: textOf(node.header?.title) || '인기 결과', layout: 'list', items: extra });
-      continue;
-    }
-    if (node?.type === 'MusicShelf') {
-      const s = sectionFromShelf(node);
-      if (s) result.sections.push({ ...s, layout: 'list' });
-    } else if (node?.type === 'ItemSection') {
-      for (const inner of Array.from(node.contents ?? []) as AnyNode[]) {
-        const s = sectionFromShelf(inner);
-        if (s) result.sections.push({ ...s, layout: 'list' });
-      }
-    }
-  }
-  return result;
-}
-
-async function suggestions(query: string): Promise<Suggestions> {
-  const music = (await yt()).music;
-  const sections = await music.getSearchSuggestions(query);
-  const queries: string[] = [];
-  const items: Card[] = [];
-  for (const section of sections) {
-    for (const node of Array.from(section.contents ?? []) as AnyNode[]) {
-      if (node?.type === 'SearchSuggestion') {
-        const q = textOf(node.suggestion);
-        if (q) queries.push(q);
-      } else {
-        const c = cardFromAny(node);
-        if (c) items.push(c);
-      }
-    }
-  }
-  return { queries: queries.slice(0, 8), items: items.slice(0, 5) };
 }
 
 async function upNext(videoId?: string, playlistId?: string): Promise<UpNext> {
@@ -327,49 +197,10 @@ async function lyrics(videoId: string): Promise<Lyrics | null> {
   }
 }
 
-async function related(videoId: string): Promise<FeedPage> {
-  const music = (await yt()).music;
-  try {
-    const list: AnyNode = await music.getRelated(videoId);
-    if (list?.type !== 'SectionList') return { sections: [] };
-    return { sections: sectionsFrom(Array.from(list.contents ?? [])) };
-  } catch {
-    return { sections: [] };
-  }
-}
-
-async function home(): Promise<FeedPage> {
-  const music = (await yt()).music;
-  let feed: AnyNode = await music.getHomeFeed();
-  const sections: Section[] = sectionsFrom(Array.from(feed.sections ?? []));
-  // 홈은 섹션이 적게 오므로 한두 번 더 이어서 불러온다.
-  for (let i = 0; i < 2 && feed.has_continuation; i++) {
-    try {
-      feed = await feed.getContinuation();
-      sections.push(...sectionsFrom(Array.from(feed.sections ?? [])));
-    } catch {
-      break;
-    }
-  }
-  return { sections };
-}
-
-async function explore(): Promise<FeedPage> {
-  const music = (await yt()).music;
-  const page: AnyNode = await music.getExplore();
-  return { sections: sectionsFrom(Array.from(page.sections ?? [])) };
-}
-
 export const youtubeProvider: Provider = {
   playlist: getPlaylist,
   continuation: getContinuation,
   album: getAlbum,
-  artist: getArtist,
-  search,
-  suggestions,
   upNext,
   lyrics,
-  related,
-  home,
-  explore,
 };

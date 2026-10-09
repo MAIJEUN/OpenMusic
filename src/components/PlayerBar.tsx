@@ -2,7 +2,6 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   MdKeyboardArrowDown,
   MdKeyboardArrowUp,
-  MdMoreVert,
   MdPause,
   MdPlayArrow,
   MdRepeat,
@@ -10,22 +9,14 @@ import {
   MdShuffle,
   MdSkipNext,
   MdSkipPrevious,
-  MdThumbDown,
-  MdThumbDownOffAlt,
-  MdThumbUp,
-  MdThumbUpOffAlt,
   MdVolumeDown,
   MdVolumeOff,
   MdVolumeUp,
 } from 'react-icons/md';
-import { Link, useNavigate } from 'react-router-dom';
-import { formatTime } from '../lib/format';
-import { useLibrary } from '../store/library';
+import { artistNames, formatTime } from '../lib/format';
 import { player, usePlayer } from '../store/player';
-import { toast, useUi } from '../store/ui';
+import { useUi } from '../store/ui';
 import { IconButton } from './IconButton';
-import { ArtistLinks } from './Links';
-import { openMenuFromEvent, trackMenuItems } from './menus';
 import { Thumb } from './Thumb';
 
 /** 드래그 가능한 진행 막대 */
@@ -162,40 +153,7 @@ export function ShuffleButton({ size }: { size?: 'sm' | 'md' | 'lg' }) {
   );
 }
 
-export function RatingButtons() {
-  const item = usePlayer((s) => s.queue[s.index]);
-  const liked = useLibrary((s) => !!item && s.liked.some((t) => t.videoId === item.track.videoId));
-  const disliked = useLibrary((s) => !!item && s.disliked.includes(item.track.videoId));
-  if (!item) return null;
-  return (
-    <>
-      <IconButton
-        label={disliked ? '싫어요 취소' : '싫어요'}
-        onClick={() => {
-          const now = useLibrary.getState().toggleDislike(item.track);
-          if (now) {
-            toast('이 곡을 추천하지 않습니다');
-            player().next();
-          }
-        }}
-      >
-        {disliked ? <MdThumbDown /> : <MdThumbDownOffAlt />}
-      </IconButton>
-      <IconButton
-        label={liked ? '좋아요 취소' : '좋아요'}
-        onClick={() => {
-          const now = useLibrary.getState().toggleLike(item.track);
-          toast(now ? '좋아요 표시한 음악에 추가됨' : '좋아요 표시한 음악에서 삭제됨');
-        }}
-      >
-        {liked ? <MdThumbUp /> : <MdThumbUpOffAlt />}
-      </IconButton>
-    </>
-  );
-}
-
 export function PlayerBar() {
-  const navigate = useNavigate();
   const item = usePlayer((s) => s.queue[s.index]);
   const hasQueue = usePlayer((s) => s.queue.length > 0);
   const npOpen = useUi((s) => s.nowPlayingOpen);
@@ -228,31 +186,9 @@ export function PlayerBar() {
           <div className="player-bar__title" title={t.title}>
             {t.title}
           </div>
-          <div className="player-bar__sub" onClick={(e) => e.stopPropagation()}>
-            <ArtistLinks artists={t.artists} onNavigate={() => setNp(false)} />
-            {t.album && (
-              <>
-                {' • '}
-                {t.album.id ? (
-                  <Link className="link" to={`/browse/${t.album.id}`} onClick={() => setNp(false)}>
-                    {t.album.name}
-                  </Link>
-                ) : (
-                  t.album.name
-                )}
-              </>
-            )}
-            {!t.album && t.extra && ` • ${t.extra}`}
+          <div className="player-bar__sub">
+            {[artistNames(t.artists), t.album?.name ?? t.extra].filter(Boolean).join(' • ')}
           </div>
-        </div>
-        <div className="player-bar__rating" onClick={(e) => e.stopPropagation()}>
-          <RatingButtons />
-          <IconButton
-            label="작업 메뉴"
-            onClick={(e) => openMenuFromEvent(e, trackMenuItems(t, { navigate: (to) => { setNp(false); navigate(to); } }))}
-          >
-            <MdMoreVert />
-          </IconButton>
         </div>
       </div>
 

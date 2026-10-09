@@ -1,15 +1,4 @@
-import type {
-  ArtistDetail,
-  Card,
-  CollectionDetail,
-  ContinuationPage,
-  FeedPage,
-  Lyrics,
-  SearchFilter,
-  SearchResult,
-  ServerConfig,
-  UpNext,
-} from '../../shared/types';
+import type { CollectionDetail, ContinuationPage, Lyrics, ServerConfig, UpNext } from '../../shared/types';
 
 /** 배포 시 Cloudflare Worker 주소 (예: https://openmusic-api.xxx.workers.dev). 비어 있으면 같은 출처의 /api 사용 */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
@@ -60,25 +49,14 @@ function cachedGet<T>(path: string, ttlMs = 5 * 60_000): Promise<T> {
 
 const enc = encodeURIComponent;
 
-export interface Suggestions {
-  queries: string[];
-  items: Card[];
-}
-
 export const api = {
   config: () => cachedGet<ServerConfig>('/config', Infinity),
   playlist: (id: string) => cachedGet<CollectionDetail>(`/playlist/${enc(id)}`),
   continuation: (token: string) => cachedGet<ContinuationPage>(`/continuation?token=${enc(token)}`),
   album: (id: string) => cachedGet<CollectionDetail>(`/album/${enc(id)}`),
-  artist: (id: string) => cachedGet<ArtistDetail>(`/artist/${enc(id)}`),
-  search: (q: string, filter: SearchFilter = 'all') => cachedGet<SearchResult>(`/search?q=${enc(q)}&filter=${filter}`),
-  suggestions: (q: string, signal?: AbortSignal) => get<Suggestions>(`/suggestions?q=${enc(q)}`, signal),
   upNext: (videoId?: string, list?: string) =>
     cachedGet<UpNext>(`/upnext?${videoId ? `v=${enc(videoId)}` : ''}${list ? `&list=${enc(list)}` : ''}`),
   lyrics: (videoId: string) => cachedGet<Lyrics | null>(`/lyrics/${enc(videoId)}`, 60 * 60_000),
-  related: (videoId: string) => cachedGet<FeedPage>(`/related/${enc(videoId)}`),
-  home: () => cachedGet<FeedPage>('/home', 15 * 60_000),
-  explore: () => cachedGet<FeedPage>('/explore', 30 * 60_000),
 };
 
 /** 재생목록 전체 트랙을 불러온다 (이어받기 토큰을 끝까지 따라감) */

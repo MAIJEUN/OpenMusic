@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { MdLibraryAdd, MdLibraryAddCheck, MdMoreVert, MdPause, MdPlayArrow, MdShuffle, MdThumbUp } from 'react-icons/md';
-import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { MdMoreVert, MdPause, MdPlayArrow, MdShuffle } from 'react-icons/md';
+import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import type { CollectionDetail, Track } from '../../shared/types';
 import { isMixList } from '../../shared/links';
-import { SectionView } from '../components/Cards';
 import { IconButton } from '../components/IconButton';
 import { collectionMenuItems, openMenuFromEvent } from '../components/menus';
 import { ErrorView, Loading } from '../components/PageState';
@@ -12,7 +11,7 @@ import { TrackList } from '../components/TrackRow';
 import { useAsync } from '../hooks/useAsync';
 import { api, loadAllTracks } from '../lib/api';
 import { formatTotal } from '../lib/format';
-import { useLibrary } from '../store/library';
+import { useLibrary, type CollectionInfo } from '../store/library';
 import { player, usePlayer } from '../store/player';
 import { toast } from '../store/ui';
 
@@ -20,14 +19,13 @@ export function PlaylistRoute() {
   const [params] = useSearchParams();
   const id = params.get('list');
   if (!id) return <Navigate to="/" replace />;
-  if (id === 'LM') return <LikedPage />;
   return <RemoteCollection key={id} kind={isMixList(id) ? 'radio' : 'playlist'} id={id} />;
 }
 
 export function BrowseRoute() {
   const { id = '' } = useParams();
   if (id.startsWith('VL')) return <Navigate to={`/playlist?list=${encodeURIComponent(id.slice(2))}`} replace />;
-  if (id.startsWith('UC')) return <Navigate to={`/channel/${id}`} replace />;
+  if (!id.startsWith('MPRE')) return <Navigate to="/" replace />;
   return <RemoteCollection key={id} kind="album" id={id} />;
 }
 
@@ -76,16 +74,10 @@ function RemoteCollection({ kind, id }: { kind: 'playlist' | 'album' | 'radio'; 
     };
   }, [data]);
 
-  // 최근 활동 기록
+  // 연 재생목록/앨범은 사이드바에 자동 등록 (이미 있으면 제목·썸네일 갱신)
   useEffect(() => {
     if (!data || data.kind === 'radio') return;
-    useLibrary.getState().touchRecent({
-      kind: data.kind,
-      id: data.id,
-      title: data.title,
-      subtitle: [data.kind === 'album' ? '앨범' : '재생목록', data.author?.name].filter(Boolean).join(' • '),
-      thumbnail: data.thumbnail,
-    });
+    useLibrary.getState().register(toCollectionInfo(data));
   }, [data]);
 
   if (loading) return <Loading />;
@@ -99,37 +91,19 @@ function RemoteCollection({ kind, id }: { kind: 'playlist' | 'album' | 'radio'; 
       complete={complete}
       getAllTracks={() => fullRef.current ?? Promise.resolve(tracks ?? data.tracks)}
       path={path}
-      savable={data.kind !== 'radio'}
+      registrable={data.kind !== 'radio'}
     />
   );
 }
 
-function LikedPage() {
-  const liked = useLibrary((s) => s.liked);
-  const tracks = useMemo(() => liked.map(({ likedAt: _likedAt, ...t }) => t as Track), [liked]);
-  const detail: CollectionDetail = {
-    kind: 'playlist',
-    id: 'LM',
-    title: '좋아요 표시한 음악',
-    subtitle: '자동 재생목록',
-    tracks,
+function toCollectionInfo(d: CollectionDetail): CollectionInfo {
+  return {
+    kind: d.kind === 'album' ? 'album' : 'playlist',
+    id: d.id,
+    title: d.title,
+    subtitle: [d.kind === 'album' ? '앨범' : '재생목록', d.author?.name].filter(Boolean).join(' • '),
+    thumbnail: d.thumbnail,
   };
-  return (
-    <CollectionView
-      detail={detail}
-      tracks={tracks}
-      complete
-      getAllTracks={async () => tracks}
-      path="/playlist?list=LM"
-      savable={false}
-      art={
-        <div className="liked-art">
-          <MdThumbUp />
-        </div>
-      }
-      empty="좋아요 표시한 노래가 여기에 표시됩니다"
-    />
-  );
 }
 
 interface ViewProps {
@@ -138,26 +112,17 @@ interface ViewProps {
   complete: boolean;
   getAllTracks: () => Promise<Track[]>;
   path: string;
-  savable: boolean;
-  art?: React.ReactNode;
-  empty?: string;
+  registrable: boolean;
 }
 
-function CollectionView({ detail, tracks, complete, getAllTracks, path, savable, art, empty }: ViewProps) {
+function CollectionView({ detail, tracks, complete, getAllTracks, path, registrable }: ViewProps) {
   const isAlbum = detail.kind === 'album';
-  const saved = useLibrary((s) => s.saved.some((x) => x.id === detail.id));
   const playingHere = usePlayer((s) => s.source?.path === path && (s.status === 'playing' || s.status === 'buffering' || s.status === 'loading'));
   const isSourceHere = usePlayer((s) => s.source?.path === path && s.queue.length > 0);
   const [expanded, setExpanded] = useState(false);
 
   const source = { title: detail.title, path };
-  const collection = {
-    kind: (isAlbum ? 'album' : 'playlist') as 'album' | 'playlist',
-    id: detail.id,
-    title: detail.title,
-    subtitle: [isAlbum ? '앨범' : '재생목록', detail.author?.name].filter(Boolean).join(' • '),
-    thumbnail: detail.thumbnail,
-  };
+  const collection = toCollectionInfo(detail);
 
   const playAll = async (shuffle = false) => {
     if (!shuffle && isSourceHere) return player().togglePlay();
@@ -172,8 +137,7 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, savable,
     player().playTracks(all, i, source);
   };
 
-  const menu = (e: MouseEvent) =>
-    openMenuFromEvent(e, collectionMenuItems({ collection, getTracks: getAllTracks, path }));
+  const menu = (e: MouseEvent) => openMenuFromEvent(e, collectionMenuItems(collection, getAllTracks));
 
   const total = formatTotal(tracks);
   const secondLine =
@@ -187,19 +151,11 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, savable,
       </div>
       <div className="collection__layout">
         <header className="collection__header">
-          <div className="collection__art">{art ?? <Thumb src={detail.thumbnail} videoId={tracks[0]?.videoId} size={264} />}</div>
+          <div className="collection__art">
+            <Thumb src={detail.thumbnail} videoId={tracks[0]?.videoId} size={264} />
+          </div>
           <h1 className="collection__title">{detail.title}</h1>
-          {detail.author && (
-            <div className="collection__author">
-              {detail.author.id ? (
-                <Link to={`/channel/${detail.author.id}`} className="link">
-                  {detail.author.name}
-                </Link>
-              ) : (
-                detail.author.name
-              )}
-            </div>
-          )}
+          {detail.author && <div className="collection__author">{detail.author.name}</div>}
           <div className="collection__meta">{detail.subtitle}</div>
           {secondLine && <div className="collection__meta">{secondLine}</div>}
           {detail.description && (
@@ -208,23 +164,13 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, savable,
             </p>
           )}
           <div className="collection__actions">
-            {savable ? (
-              <IconButton
-                label={saved ? '보관함에서 삭제' : '보관함에 저장'}
-                className="icon-btn--filled"
-                onClick={() => toast(useLibrary.getState().toggleSaved(collection) ? '보관함에 저장됨' : '보관함에서 삭제됨')}
-              >
-                {saved ? <MdLibraryAddCheck /> : <MdLibraryAdd />}
-              </IconButton>
-            ) : (
-              <IconButton label="셔플" className="icon-btn--filled" onClick={() => playAll(true)} disabled={!tracks.length}>
-                <MdShuffle />
-              </IconButton>
-            )}
+            <IconButton label="셔플" className="icon-btn--filled" onClick={() => playAll(true)} disabled={!tracks.length}>
+              <MdShuffle />
+            </IconButton>
             <button type="button" className="play-big" aria-label={playingHere ? '일시중지' : '재생'} onClick={() => playAll(false)} disabled={!tracks.length}>
               {playingHere ? <MdPause /> : <MdPlayArrow />}
             </button>
-            {savable ? (
+            {registrable ? (
               <IconButton label="더보기" className="icon-btn--filled" onClick={menu}>
                 <MdMoreVert />
               </IconButton>
@@ -232,18 +178,13 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, savable,
               <span className="collection__action-spacer" />
             )}
           </div>
-          {savable && (
-            <button type="button" className="btn btn--chip collection__shuffle" onClick={() => playAll(true)} disabled={!tracks.length}>
-              <MdShuffle /> 셔플
-            </button>
-          )}
         </header>
 
         <div className="collection__body">
           {tracks.length ? (
             <TrackList tracks={tracks} numbered={isAlbum} showAlbum={!isAlbum} onPlayIndex={playIndex} />
           ) : (
-            <div className="panel-empty">{empty ?? '이 재생목록에 재생 가능한 곡이 없습니다'}</div>
+            <div className="panel-empty">이 재생목록에 재생 가능한 곡이 없습니다</div>
           )}
           {!complete && (
             <div className="collection__more">
@@ -251,9 +192,6 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, savable,
             </div>
           )}
           {isAlbum && total && <div className="collection__footer">{`${tracks.length}곡 • ${total}`}</div>}
-          {detail.related?.map((s, i) => (
-            <SectionView key={`${s.title}-${i}`} section={s} />
-          ))}
         </div>
       </div>
     </div>

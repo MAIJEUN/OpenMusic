@@ -1,72 +1,92 @@
-import { MdAdd, MdExplore, MdHome, MdLibraryMusic, MdOutlineExplore, MdOutlineHome, MdOutlineLibraryMusic, MdThumbUp } from 'react-icons/md';
-import { NavLink, useLocation } from 'react-router-dom';
-import { useLibrary } from '../store/library';
+import type { MouseEvent } from 'react';
+import { MdAdd, MdClose, MdHome, MdOutlineHome } from 'react-icons/md';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { collectionPath, useLibrary, type SavedCollection } from '../store/library';
 import { usePlayer } from '../store/player';
-import { useUi } from '../store/ui';
+import { toast, useUi } from '../store/ui';
 import { Equalizer } from './Equalizer';
+import { collectionMenuItems, openMenuFromEvent } from './menus';
+import { tracksOf } from './PlaylistCard';
+import { Thumb } from './Thumb';
 
-const NAV = [
-  { to: '/', label: '홈', icon: <MdOutlineHome />, activeIcon: <MdHome /> },
-  { to: '/explore', label: '둘러보기', icon: <MdOutlineExplore />, activeIcon: <MdExplore /> },
-  { to: '/library', label: '보관함', icon: <MdOutlineLibraryMusic />, activeIcon: <MdLibraryMusic /> },
-];
+function removeWithUndo(c: SavedCollection) {
+  useLibrary.getState().remove(c.id);
+  toast(`'${c.title}'을(를) 사이드바에서 삭제했습니다`, {
+    actionLabel: '실행취소',
+    action: () => useLibrary.getState().register(c),
+  });
+}
 
 export function Sidebar() {
   const collapsed = useUi((s) => s.sidebarCollapsed);
   const setDialog = useUi((s) => s.setDialog);
   const saved = useLibrary((s) => s.saved);
-  const likedCount = useLibrary((s) => s.liked.length);
-  const sourcePath = usePlayer((s) => (s.status === 'playing' ? s.source?.path : undefined));
+  const playingPath = usePlayer((s) => (s.status === 'playing' || s.status === 'buffering' ? s.source?.path : undefined));
   const location = useLocation();
+  const navigate = useNavigate();
   const current = location.pathname + location.search;
+
+  const menu = (e: MouseEvent, c: SavedCollection) => openMenuFromEvent(e, collectionMenuItems(c, () => tracksOf(c)));
 
   return (
     <nav className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`} aria-label="가이드">
       <div className="sidebar__nav">
-        {NAV.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}>
-            {({ isActive }) => (
-              <>
-                <span className="sidebar__icon">{isActive ? n.activeIcon : n.icon}</span>
-                <span className="sidebar__label">{n.label}</span>
-              </>
-            )}
-          </NavLink>
-        ))}
+        <NavLink to="/" end className={({ isActive }) => `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}>
+          {({ isActive }) => (
+            <>
+              <span className="sidebar__icon">{isActive ? <MdHome /> : <MdOutlineHome />}</span>
+              <span className="sidebar__label">홈</span>
+            </>
+          )}
+        </NavLink>
       </div>
 
-      {!collapsed && (
-        <>
-          <div className="sidebar__divider" />
-          <button type="button" className="sidebar__new" onClick={() => setDialog('addLink')}>
-            <MdAdd />
-            <span>재생목록 추가</span>
-          </button>
-          <div className="sidebar__playlists">
-            <NavLink to="/playlist?list=LM" className={`sidebar__playlist ${current === '/playlist?list=LM' ? 'sidebar__playlist--active' : ''}`}>
+      <div className="sidebar__divider" />
+
+      <button type="button" className="sidebar__new" onClick={() => setDialog('addLink')} title="재생목록 추가">
+        <MdAdd />
+        <span className="sidebar__new-label">재생목록 추가</span>
+      </button>
+
+      <div className="sidebar__playlists">
+        {saved.length === 0 && !collapsed && (
+          <p className="sidebar__empty">재생목록 링크를 열면 여기에 등록되어 언제든 다시 불러올 수 있어요.</p>
+        )}
+        {saved.map((c) => {
+          const path = collectionPath(c);
+          return (
+            <div
+              key={c.id}
+              role="link"
+              tabIndex={0}
+              title={c.title}
+              className={`sidebar__playlist ${current === path ? 'sidebar__playlist--active' : ''}`}
+              onClick={() => navigate(path)}
+              onKeyDown={(e) => e.key === 'Enter' && navigate(path)}
+              onContextMenu={(e) => menu(e, c)}
+            >
+              <Thumb src={c.thumbnail} size={40} className="sidebar__thumb" />
               <span className="sidebar__playlist-text">
-                <span className="sidebar__playlist-title">
-                  <MdThumbUp className="sidebar__pin" /> 좋아요 표시한 음악
-                </span>
-                <span className="sidebar__playlist-sub">자동 재생목록 • {likedCount}곡</span>
+                <span className="sidebar__playlist-title">{c.title}</span>
+                {c.subtitle && <span className="sidebar__playlist-sub">{c.subtitle}</span>}
               </span>
-              {sourcePath === '/playlist?list=LM' && <Equalizer />}
-            </NavLink>
-            {saved.map((c) => {
-              const path = c.kind === 'album' ? `/browse/${c.id}` : c.kind === 'artist' ? `/channel/${c.id}` : `/playlist?list=${encodeURIComponent(c.id)}`;
-              return (
-                <NavLink key={c.id} to={path} className={`sidebar__playlist ${current === path ? 'sidebar__playlist--active' : ''}`}>
-                  <span className="sidebar__playlist-text">
-                    <span className="sidebar__playlist-title">{c.title}</span>
-                    <span className="sidebar__playlist-sub">{c.subtitle}</span>
-                  </span>
-                  {sourcePath === path && <Equalizer />}
-                </NavLink>
-              );
-            })}
-          </div>
-        </>
-      )}
+              {playingPath === path && <Equalizer />}
+              <button
+                type="button"
+                className="sidebar__remove"
+                aria-label="사이드바에서 삭제"
+                title="사이드바에서 삭제"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeWithUndo(c);
+                }}
+              >
+                <MdClose />
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </nav>
   );
 }

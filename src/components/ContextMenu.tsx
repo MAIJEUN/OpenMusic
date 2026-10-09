@@ -54,7 +54,6 @@ export function ContextMenu() {
         role="menu"
         style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
       >
-        {menu.header && <div className="menu__header">{menu.header}</div>}
         {menu.items.map((item, i) =>
           item === 'divider' ? (
             <div key={`d${i}`} className="menu__divider" />

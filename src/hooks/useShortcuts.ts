@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { useLibrary } from '../store/library';
 import { player } from '../store/player';
 import { toast, useUi } from '../store/ui';
 
@@ -9,7 +8,10 @@ function isTyping(target: EventTarget | null) {
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }
 
-/** YouTube Music과 비슷한 키보드 단축키 */
+/**
+ * YouTube Music과 비슷한 키보드 단축키
+ * Space/K 재생·일시중지, J/L 또는 ←/→ 탐색, N/P 다음·이전 곡, =/- 볼륨, M 음소거, R 반복, S 셔플, F 플레이어 페이지
+ */
 export function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -66,21 +68,9 @@ export function useShortcuts() {
           p.toggleShuffle();
           toast(p.shuffle ? '셔플 사용 안함' : '셔플 사용');
           break;
-        case '+':
-          if (current) toast(useLibrary.getState().toggleLike(current.track) ? '좋아요 표시한 음악에 추가됨' : '좋아요 표시한 음악에서 삭제됨');
-          break;
-        case '_':
-          if (current && useLibrary.getState().toggleDislike(current.track)) p.next();
-          break;
         case 'f':
         case 'F':
           if (current) useUi.getState().setNowPlaying(!useUi.getState().nowPlayingOpen);
-          break;
-        case '/':
-          window.dispatchEvent(new Event('om:focus-search'));
-          break;
-        case '?':
-          useUi.getState().setDialog('shortcuts');
           break;
         default:
           handled = false;

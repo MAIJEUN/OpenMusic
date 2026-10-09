@@ -5,24 +5,21 @@ import { CSS } from '@dnd-kit/utilities';
 import { useEffect, useRef, type MouseEvent } from 'react';
 import { useAsync } from '../hooks/useAsync';
 import { MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
-import { Link, useNavigate } from 'react-router-dom';
-import type { FeedPage, Lyrics } from '../../shared/types';
+import { Link } from 'react-router-dom';
+import type { Lyrics } from '../../shared/types';
 import { api } from '../lib/api';
-import { formatTime } from '../lib/format';
+import { artistNames, formatTime } from '../lib/format';
 import { player, usePlayer, type QueueItem } from '../store/player';
 import { useUi, type NowPlayingTab } from '../store/ui';
-import { SectionView } from './Cards';
 import { Equalizer } from './Equalizer';
 import { IconButton } from './IconButton';
-import { ArtistLinks } from './Links';
 import { openMenuFromEvent, trackMenuItems } from './menus';
-import { PlayPauseIcon, ProgressBar, RatingButtons, RepeatButton, ShuffleButton } from './PlayerBar';
+import { PlayPauseIcon, ProgressBar, RepeatButton, ShuffleButton } from './PlayerBar';
 import { Thumb } from './Thumb';
 
 const TABS: { id: NowPlayingTab; label: string }[] = [
   { id: 'upnext', label: '다음 트랙' },
   { id: 'lyrics', label: '가사' },
-  { id: 'related', label: '관련 항목' },
 ];
 
 export function NowPlaying() {
@@ -34,7 +31,6 @@ export function NowPlaying() {
   const setMode = useUi((s) => s.setNpMode);
   const setVideoSlot = useUi((s) => s.setVideoSlot);
   const item = usePlayer((s) => s.queue[s.index]);
-  const navigate = useNavigate();
 
   // 큐가 비면 닫기
   useEffect(() => {
@@ -52,10 +48,6 @@ export function NowPlaying() {
   }, [open, setOpen]);
 
   const t = item?.track;
-  const go = (to: string) => {
-    setOpen(false);
-    navigate(to);
-  };
 
   return (
     <div className={`np ${open ? 'np--open' : ''}`} aria-hidden={!open}>
@@ -89,20 +81,8 @@ export function NowPlaying() {
 
               {/* 모바일용 정보 + 컨트롤 */}
               <div className="np__mobile-info">
-                <div className="np__mobile-title-row">
-                  <div className="np__mobile-text">
-                    <div className="np__mobile-title">{t.title}</div>
-                    <div className="np__mobile-artist">
-                      <ArtistLinks artists={t.artists} onNavigate={() => setOpen(false)} />
-                    </div>
-                  </div>
-                  <IconButton label="작업 메뉴" onClick={(e) => openMenuFromEvent(e, trackMenuItems(t, { navigate: go }))}>
-                    <MdMoreVert />
-                  </IconButton>
-                </div>
-                <div className="np__mobile-rating">
-                  <RatingButtons />
-                </div>
+                <div className="np__mobile-title">{t.title}</div>
+                <div className="np__mobile-artist">{artistNames(t.artists)}</div>
                 <ProgressBar className="np__mobile-progress" />
                 <MobileTimes />
                 <div className="np__mobile-controls">
@@ -137,9 +117,8 @@ export function NowPlaying() {
                 ))}
               </div>
               <div className="np__panel">
-                {tab === 'upnext' && <UpNextPanel onNavigate={go} />}
+                {tab === 'upnext' && <UpNextPanel onNavigate={() => setOpen(false)} />}
                 {tab === 'lyrics' && <LyricsPanel videoId={t.videoId} />}
-                {tab === 'related' && <RelatedPanel videoId={t.videoId} />}
               </div>
             </div>
           </div>
@@ -162,12 +141,10 @@ function MobileTimes() {
 
 /* ------------------------------ 다음 트랙 ------------------------------ */
 
-function UpNextPanel({ onNavigate }: { onNavigate: (to: string) => void }) {
+function UpNextPanel({ onNavigate }: { onNavigate: () => void }) {
   const queue = usePlayer((s) => s.queue);
   const index = usePlayer((s) => s.index);
   const source = usePlayer((s) => s.source);
-  const autoplay = usePlayer((s) => s.autoplay);
-  const radioLoading = usePlayer((s) => s.radioLoading);
   const open = useUi((s) => s.nowPlayingOpen);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -196,15 +173,13 @@ function UpNextPanel({ onNavigate }: { onNavigate: (to: string) => void }) {
     player().moveInQueue(from, to);
   };
 
-  const firstAuto = queue.findIndex((q, i) => q.auto && i > index);
-
   return (
     <div className="upnext" ref={listRef}>
       {source && (
         <div className="upnext__source">
           <span className="upnext__source-label">재생 중인 출처</span>
           {source.path ? (
-            <Link className="upnext__source-title link" to={source.path} onClick={(e) => { e.preventDefault(); onNavigate(source.path!); }}>
+            <Link className="upnext__source-title link" to={source.path} onClick={onNavigate}>
               {source.title}
             </Link>
           ) : (
@@ -215,42 +190,21 @@ function UpNextPanel({ onNavigate }: { onNavigate: (to: string) => void }) {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} modifiers={[restrictToVerticalAxis]}>
         <SortableContext items={queue.map((q) => q.uid)} strategy={verticalListSortingStrategy}>
           {queue.map((q, i) => (
-            <div key={q.uid}>
-              {i === firstAuto && <AutoplayHeader />}
-              <QueueRow item={q} current={i === index} past={i < index} onNavigate={onNavigate} />
-            </div>
+            <QueueRow key={q.uid} item={q} current={i === index} past={i < index} />
           ))}
         </SortableContext>
       </DndContext>
-      {firstAuto < 0 && <AutoplayHeader />}
-      {autoplay && radioLoading && <div className="upnext__loading">비슷한 음악을 찾는 중…</div>}
     </div>
   );
 }
 
-function AutoplayHeader() {
-  const autoplay = usePlayer((s) => s.autoplay);
-  return (
-    <div className="autoplay">
-      <div>
-        <div className="autoplay__title">자동재생</div>
-        <div className="autoplay__desc">비슷한 콘텐츠를 계속 재생합니다</div>
-      </div>
-      <label className="switch">
-        <input type="checkbox" checked={autoplay} onChange={(e) => player().setAutoplay(e.target.checked)} aria-label="자동재생" />
-        <span className="switch__track" />
-      </label>
-    </div>
-  );
-}
-
-function QueueRow({ item, current, past, onNavigate }: { item: QueueItem; current: boolean; past: boolean; onNavigate: (to: string) => void }) {
+function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; past: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.uid });
   const status = usePlayer((s) => (current ? s.status : 'idle'));
   const playing = current && (status === 'playing' || status === 'buffering' || status === 'loading');
   const t = item.track;
 
-  const menu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(t, { navigate: onNavigate, queueUid: item.uid }));
+  const menu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(t, item.uid));
 
   return (
     <div
@@ -277,7 +231,7 @@ function QueueRow({ item, current, past, onNavigate }: { item: QueueItem; curren
       </div>
       <div className="queue-item__text">
         <div className="queue-item__title">{t.title}</div>
-        <div className="queue-item__artist">{t.artists.map((a) => a.name).join(', ')}</div>
+        <div className="queue-item__artist">{artistNames(t.artists)}</div>
       </div>
       <div className="queue-item__end">
         <span className="queue-item__duration">{t.duration ? formatTime(t.duration) : ''}</span>
@@ -304,21 +258,6 @@ function LyricsPanel({ videoId }: { videoId: string }) {
     <div className="lyrics">
       <p className="lyrics__text">{data.text}</p>
       {data.source && <p className="lyrics__source">{data.source}</p>}
-    </div>
-  );
-}
-
-/* ------------------------------ 관련 항목 ------------------------------ */
-
-function RelatedPanel({ videoId }: { videoId: string }) {
-  const { loading, data } = useAsync<FeedPage>(() => api.related(videoId), [videoId]);
-  if (loading) return <div className="panel-spinner"><div className="spinner" /></div>;
-  if (!data?.sections.length) return <div className="panel-empty">관련 항목이 없습니다</div>;
-  return (
-    <div className="related">
-      {data.sections.map((s, i) => (
-        <SectionView key={`${s.title}-${i}`} section={s} />
-      ))}
     </div>
   );
 }

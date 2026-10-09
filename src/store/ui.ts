@@ -21,11 +21,10 @@ export interface MenuState {
   y: number;
   /** 기준 요소의 사각형 (버튼 아래에 붙이기 위함) */
   anchor?: { top: number; bottom: number; left: number; right: number };
-  header?: ReactNode;
   items: (MenuItem | 'divider')[];
 }
 
-export type NowPlayingTab = 'upnext' | 'lyrics' | 'related';
+export type NowPlayingTab = 'upnext' | 'lyrics';
 
 interface UiState {
   sidebarCollapsed: boolean;
@@ -34,7 +33,7 @@ interface UiState {
   npMode: 'song' | 'video';
   toasts: Toast[];
   menu: MenuState | null;
-  dialog: 'shortcuts' | 'addLink' | null;
+  dialog: 'addLink' | null;
   videoSlot: HTMLElement | null;
 
   toggleSidebar: () => void;
