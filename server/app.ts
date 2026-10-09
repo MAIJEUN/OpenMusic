@@ -9,6 +9,9 @@ import type { Provider } from './provider.js';
 
 const MIN = 60_000;
 
+/** 이미지 중계를 허용하는 호스트 (YouTube/Google 썸네일 서버) */
+const IMAGE_HOSTS = [/^i\d?\.ytimg\.com$/, /^(lh\d|yt\d)\.(googleusercontent|ggpht)\.com$/, /\.googleusercontent\.com$/, /\.ggpht\.com$/];
+
 class HttpError extends Error {
   constructor(
     public status: number,
@@ -74,6 +77,27 @@ export function createApp(provider: Provider, config: ServerConfig) {
     const id = need(c.req.param('id'), 'id');
     const lyrics = await cached(`lyrics:${id}`, 60 * MIN, () => provider.lyrics(id));
     return c.json(lyrics);
+  });
+
+  // 앨범 아트 색상 추출용 이미지 중계. 브라우저 캔버스로 픽셀을 읽으려면 CORS 허용이 필요한데
+  // Google 이미지 서버는 이를 보장하지 않아서, 허용된 호스트의 이미지만 그대로 전달한다.
+  app.get('/image', async (c) => {
+    const raw = need(c.req.query('url'), 'url');
+    let target: URL;
+    try {
+      target = new URL(raw);
+    } catch {
+      throw new HttpError(400, '잘못된 이미지 주소입니다.');
+    }
+    if (target.protocol !== 'https:' || !IMAGE_HOSTS.some((re) => re.test(target.hostname))) {
+      throw new HttpError(400, '허용되지 않은 이미지 주소입니다.');
+    }
+    const upstream = await fetch(target.toString());
+    const type = upstream.headers.get('Content-Type') ?? '';
+    if (!upstream.ok || !type.startsWith('image/')) throw new HttpError(502, '이미지를 가져오지 못했습니다.');
+    return new Response(upstream.body, {
+      headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*' },
+    });
   });
 
   app.notFound((c) => c.json({ error: '알 수 없는 API입니다.' }, 404));

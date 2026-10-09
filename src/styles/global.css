@@ -2,6 +2,18 @@
    OpenMusic — YouTube Music 스타일 다크 테마
    ========================================================= */
 
+/* 앨범 아트에서 뽑은 테마 색. @property로 등록해서 곡이 바뀔 때 부드럽게 전환된다 */
+@property --theme-1 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgb(255, 78, 69);
+}
+@property --theme-2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgb(199, 15, 91);
+}
+
 :root {
   --bg: #030303;
   --bg-elev: #212121;
@@ -22,6 +34,13 @@
   --radius: 4px;
   --font: 'Roboto', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
   color-scheme: dark;
+  --theme-1: rgb(255, 78, 69);
+  --theme-2: rgb(199, 15, 91);
+  /* 강조색을 흰색과 섞은 밝은 버전 (재생 중 표시 등) */
+  --theme-light: color-mix(in srgb, var(--theme-1) 45%, white);
+  transition:
+    --theme-1 1.6s ease,
+    --theme-2 1.6s ease;
 }
 
 *,
@@ -33,7 +52,6 @@
 html,
 body {
   margin: 0;
-  background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -41,8 +59,25 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+html {
+  background: var(--bg);
+}
 body {
   overflow-y: scroll;
+}
+
+/* 페이지 전체에 깔리는 테마 색 빛 (스펙트럼이 켜져 있으면 저음에 맞춰 세기가 바뀜) */
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.8;
+  transition: opacity 0.12s linear;
+  background:
+    radial-gradient(70% 55% at 12% -8%, color-mix(in srgb, var(--theme-1) 24%, transparent), transparent 72%),
+    radial-gradient(60% 60% at 105% 108%, color-mix(in srgb, var(--theme-2) 26%, transparent), transparent 70%),
+    radial-gradient(45% 40% at 70% 35%, color-mix(in srgb, var(--theme-2) 8%, transparent), transparent 75%);
 }
 
 button {
@@ -278,7 +313,7 @@ p {
   display: block;
   width: 3px;
   height: 100%;
-  background: #fff;
+  background: var(--theme-light);
   border-radius: 1px;
   transform-origin: bottom;
   transform: scaleY(0.5);
@@ -333,7 +368,7 @@ p {
   border-bottom: 1px solid transparent;
 }
 .topbar--solid {
-  background: var(--bg);
+  background: color-mix(in srgb, var(--theme-2) 8%, var(--bg));
   border-bottom-color: var(--border);
 }
 .topbar__left {
@@ -382,7 +417,7 @@ p {
   display: flex;
   flex-direction: column;
   z-index: 30;
-  background: var(--bg);
+  background: transparent;
   border-right: 1px solid var(--border);
   transition: width 0.2s;
 }
@@ -476,7 +511,7 @@ p {
   background: var(--bg-hover);
 }
 .sidebar__playlist--active {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--theme-1) 16%, rgba(255, 255, 255, 0.06));
 }
 .sidebar__playlist-text {
   flex: 1;
@@ -613,8 +648,9 @@ p {
   margin: 8px 0 40px;
   border-radius: 16px;
   background:
-    radial-gradient(120% 140% at 0% 0%, rgba(255, 78, 69, 0.35), transparent 55%),
-    radial-gradient(120% 140% at 100% 100%, rgba(199, 15, 91, 0.3), transparent 55%), #181818;
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--theme-1) 35%, transparent), transparent 55%),
+    radial-gradient(120% 140% at 100% 100%, color-mix(in srgb, var(--theme-2) 40%, transparent), transparent 55%),
+    rgba(24, 24, 24, 0.85);
 }
 .hero__title {
   font-size: clamp(22px, 3vw, 32px);
@@ -759,7 +795,7 @@ p {
   background: var(--bg-hover);
 }
 .track-row--current {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--theme-1) 12%, transparent);
 }
 .track-row__lead {
   flex: none;
@@ -1011,7 +1047,7 @@ p {
   right: 0;
   bottom: 0;
   height: var(--player-h);
-  background: var(--bg-elev);
+  background: color-mix(in srgb, var(--theme-2) 16%, #181818);
   display: flex;
   align-items: center;
   padding: 0 16px 0 8px;
@@ -1138,7 +1174,7 @@ p {
   bottom: 0;
 }
 .progress__fill {
-  background: var(--accent);
+  background: var(--theme-1);
 }
 .progress__hover {
   background: rgba(255, 255, 255, 0.25);
@@ -1150,7 +1186,7 @@ p {
   height: 14px;
   margin: -7px 0 0 -7px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--theme-1);
   transform: scale(0);
   transition: transform 0.1s;
 }
@@ -1233,7 +1269,10 @@ p {
   right: 0;
   bottom: var(--player-h);
   z-index: 40;
-  background: var(--bg);
+  background:
+    radial-gradient(80% 70% at 25% 15%, color-mix(in srgb, var(--theme-1) 16%, transparent), transparent 70%),
+    radial-gradient(70% 70% at 95% 100%, color-mix(in srgb, var(--theme-2) 24%, transparent), transparent 70%),
+    var(--bg);
   transform: translateY(100%);
   visibility: hidden;
   transition:
@@ -1384,7 +1423,7 @@ p {
   background: var(--bg-hover);
 }
 .queue-item--current {
-  background: rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--theme-1) 20%, rgba(255, 255, 255, 0.06));
 }
 .queue-item--dragging {
   background: #333;
