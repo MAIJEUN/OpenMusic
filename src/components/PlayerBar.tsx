@@ -14,7 +14,7 @@ import {
   MdVolumeOff,
   MdVolumeUp,
 } from 'react-icons/md';
-import { artistNames, formatTime } from '../lib/format';
+import { albumOrExtra, artistNames, formatTime } from '../lib/format';
 import { player, usePlayer } from '../store/player';
 import { api } from '../lib/api';
 import { spectrum } from '../player/spectrum';
@@ -212,7 +212,6 @@ export function PlayerBar() {
 
   return (
     <div className={`player-bar ${npOpen ? 'player-bar--np' : ''}`} onClick={() => setNp(!npOpen)}>
-      <SpectrumBackground />
       <ProgressBar className="player-bar__progress" />
 
       <div className="player-bar__left" onClick={(e) => e.stopPropagation()}>
@@ -229,13 +228,15 @@ export function PlayerBar() {
       </div>
 
       <div className="player-bar__middle">
-        <Thumb src={t.thumbnail} videoId={t.videoId} size={40} className="player-bar__thumb" />
-        <div className="player-bar__info">
-          <div className="player-bar__title" title={t.title}>
-            {t.title}
-          </div>
-          <div className="player-bar__sub">
-            {[artistNames(t.artists), t.album?.name ?? t.extra].filter(Boolean).join(' • ')}
+        {/* 실시간 스펙트럼은 곡 정보 영역 뒤에만 그린다 */}
+        <div className="player-bar__now">
+          <SpectrumBackground />
+          <Thumb src={t.thumbnail} videoId={t.videoId} size={40} className="player-bar__thumb" />
+          <div className="player-bar__info">
+            <div className="player-bar__title" title={t.title}>
+              {t.title}
+            </div>
+            <div className="player-bar__sub">{[artistNames(t.artists), albumOrExtra(t)].filter(Boolean).join(' • ')}</div>
           </div>
         </div>
       </div>

@@ -95,7 +95,7 @@ export function parseRuns(runs: Run[]): RunInfo {
   const info: RunInfo = { artists: [], plain: [] };
   for (const run of runs) {
     const text = run.text?.trim() ?? '';
-    if (!text || SEPARATOR.test(text)) continue;
+    if (!text || SEPARATOR.test(text) || text === 'N/A') continue;
     const browseId = browseIdOf(run);
     if (browseId?.startsWith('UC') || pageTypeOf(run.endpoint) === 'MUSIC_PAGE_TYPE_ARTIST') {
       info.artists.push({ name: text, id: browseId });

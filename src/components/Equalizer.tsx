@@ -30,12 +30,12 @@ export function Equalizer({ paused }: { paused?: boolean }) {
     }
     const bands = new Float32Array(4);
     // 대역마다 최근 범위에 맞춰 펼쳐서 4개 막대가 각자 크게 움직이게 한다
-    const reactive = new Reactive(4, { mode: 'range', attack: 0.35, release: 0.18 });
+    const reactive = new Reactive(4, { mode: 'range', attack: 0.45, release: 0.24 });
     return spectrum.onFrame((freq, rate) => {
       toBands(freq, rate, 4, bands, 50, 10000);
-      // 꼭대기·바닥까지 매번 치지 않도록 20~85% 사이에서 움직이게 한다
+      // 꼭대기·바닥까지 매번 치지 않도록 15~90% 사이에서 움직이게 한다
       const v = reactive.update(bands);
-      set(Array.from(v, (x) => 0.2 + x * 0.65));
+      set(Array.from(v, (x) => 0.15 + x * 0.75));
     });
   }, [live, paused]);
 
