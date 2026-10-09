@@ -1,4 +1,4 @@
-import { DndContext, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { DndContext, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { restrictToVerticalAxis } from './dndModifiers';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -149,8 +149,10 @@ function UpNextPanel({ onNavigate }: { onNavigate: () => void }) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    // 마우스: 6px 이상 움직이면 끌기 시작 (그냥 클릭은 재생)
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    // 터치: 길게 누르면 끌기 시작 (그냥 쓸어 넘기면 스크롤)
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
   );
 
   // 현재 곡이 보이도록 스크롤
@@ -167,6 +169,8 @@ function UpNextPanel({ onNavigate }: { onNavigate: () => void }) {
   }, [index, open]);
 
   const onDragEnd = (e: DragEndEvent) => {
+    drag.active = false;
+    drag.endedAt = Date.now();
     if (!e.over || e.active.id === e.over.id) return;
     const from = queue.findIndex((q) => q.uid === e.active.id);
     const to = queue.findIndex((q) => q.uid === e.over!.id);
@@ -187,7 +191,17 @@ function UpNextPanel({ onNavigate }: { onNavigate: () => void }) {
           )}
         </div>
       )}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} modifiers={[restrictToVerticalAxis]}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={() => (drag.active = true)}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => {
+          drag.active = false;
+          drag.endedAt = Date.now();
+        }}
+        modifiers={[restrictToVerticalAxis]}
+      >
         <SortableContext items={queue.map((q) => q.uid)} strategy={verticalListSortingStrategy}>
           {queue.map((q, i) => (
             <QueueRow key={q.uid} item={q} current={i === index} past={i < index} />
@@ -198,23 +212,35 @@ function UpNextPanel({ onNavigate }: { onNavigate: () => void }) {
   );
 }
 
+/** 끌기 상태: 끌어서 놓은 직후의 클릭(=곡 재생)과 길게 누를 때의 메뉴를 막는 데 쓴다 */
+const drag = { active: false, endedAt: 0 };
+const justDragged = () => drag.active || Date.now() - drag.endedAt < 250;
+
 function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; past: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.uid });
   const status = usePlayer((s) => (current ? s.status : 'idle'));
   const playing = current && (status === 'playing' || status === 'buffering' || status === 'loading');
   const t = item.track;
 
-  const menu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(t, item.uid));
+  const menu = (e: MouseEvent) => {
+    if (justDragged()) {
+      e.preventDefault();
+      return;
+    }
+    openMenuFromEvent(e, trackMenuItems(t, item.uid));
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={`queue-item ${current ? 'queue-item--current' : ''} ${past ? 'queue-item--past' : ''} ${isDragging ? 'queue-item--dragging' : ''}`}
-      onClick={() => player().jumpTo(item.uid)}
+      onClick={() => !justDragged() && player().jumpTo(item.uid)}
       onContextMenu={menu}
       {...attributes}
+      {...listeners}
       role="listitem"
+      title="클릭해서 재생 · 끌어서 순서 변경"
     >
       <div className="queue-item__thumb">
         <Thumb src={t.thumbnail} videoId={t.videoId} size={32} />
@@ -239,9 +265,10 @@ function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; 
           <IconButton label="작업 메뉴" size="sm" onClick={menu}>
             <MdMoreVert />
           </IconButton>
-          <span className="queue-item__handle" {...listeners} aria-label="순서 변경" title="드래그하여 순서 변경">
-            <MdDragIndicator />
-          </span>
+        </span>
+        {/* 줄 어디를 잡아도 끌 수 있지만, 끌 수 있다는 표시로 손잡이를 항상 보여준다 */}
+        <span className="queue-item__handle" aria-hidden>
+          <MdDragIndicator />
         </span>
       </div>
     </div>

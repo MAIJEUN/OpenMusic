@@ -5,6 +5,7 @@ import { thumbSize } from '../lib/thumb';
 import { attachEngine, usePlayer } from '../store/player';
 import { toast, useUi } from '../store/ui';
 import { FakeEngine, YouTubeEngine, type Engine, type EngineEvents } from './engine';
+import { anchorPause, anchorPlay } from './mediaAnchor';
 
 const HIDDEN: Partial<CSSStyleDeclaration> = {
   left: '0px',
@@ -143,7 +144,38 @@ function useMediaSession() {
 
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState =
-      status === 'playing' || status === 'buffering' ? 'playing' : status === 'idle' ? 'none' : 'paused';
+    const active = status === 'playing' || status === 'buffering' || status === 'loading';
+    navigator.mediaSession.playbackState = active ? 'playing' : status === 'idle' ? 'none' : 'paused';
+    // 시스템 미디어 컨트롤이 YouTube iframe이 아니라 이 페이지에 연결되도록 무음 오디오를 함께 재생
+    if (active) anchorPlay();
+    else anchorPause();
   }, [status]);
+
+  // 시스템 미디어 컨트롤의 진행 막대(재생 위치/길이)
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
+    let last = { position: -10, duration: 0, status: '' };
+    const update = () => {
+      const { position, duration, status } = usePlayer.getState();
+      if (!duration || duration < 1) return;
+      // 상태·길이가 바뀌었거나, 위치가 예상과 2초 이상 어긋날 때(탐색 등)만 갱신
+      const jumped = Math.abs(position - last.position) > 2;
+      if (status === last.status && duration === last.duration && !jumped) {
+        last.position = position;
+        return;
+      }
+      last = { position, duration, status };
+      try {
+        navigator.mediaSession.setPositionState({
+          duration,
+          position: Math.min(Math.max(0, position), duration),
+          playbackRate: 1,
+        });
+      } catch {
+        /* 잘못된 값 무시 */
+      }
+    };
+    update();
+    return usePlayer.subscribe(update);
+  }, []);
 }

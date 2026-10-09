@@ -1486,6 +1486,7 @@ p {
   cursor: pointer;
   background: transparent;
   user-select: none;
+  -webkit-touch-callout: none;
 }
 .queue-item:hover {
   background: var(--bg-hover);
@@ -1494,10 +1495,11 @@ p {
   background: color-mix(in srgb, var(--theme-1) 20%, rgba(255, 255, 255, 0.06));
 }
 .queue-item--dragging {
-  background: #333;
+  background: color-mix(in srgb, var(--theme-1) 18%, #2a2a2a);
   z-index: 2;
   position: relative;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  opacity: 0.95;
 }
 .queue-item__thumb {
   position: relative;
@@ -1575,11 +1577,21 @@ p {
 .queue-item__handle {
   display: grid;
   place-items: center;
-  width: 32px;
+  width: 28px;
   height: 32px;
+  margin-left: 4px;
   cursor: grab;
+  color: var(--text-3);
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.queue-item:hover .queue-item__handle {
+  opacity: 1;
   color: var(--text-2);
-  touch-action: none;
+}
+.queue-item--dragging,
+.queue-item--dragging .queue-item__handle {
+  cursor: grabbing;
 }
 .queue-item__handle svg {
   width: 22px;
