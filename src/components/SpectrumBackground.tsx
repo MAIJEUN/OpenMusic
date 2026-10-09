@@ -24,7 +24,7 @@ function curve(ctx: CanvasRenderingContext2D, xs: Float32Array, ys: Float32Array
   ctx.lineTo(xs[xs.length - 1], ys[ys.length - 1]);
 }
 
-/** 하단 재생 바 뒤에 그리는 실시간 오디오 스펙트럼 (곡선 그래프, 앨범 아트 색) */
+/** 하단 재생 바 뒤에 그리는 실시간 오디오 스펙트럼 (차분한 곡선 그래프, 테마 색을 옅게) */
 export function SpectrumBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const state = useSpectrumState();
@@ -50,72 +50,61 @@ export function SpectrumBackground() {
     ro.observe(canvas);
 
     let bands = new Float32Array(0);
-    let peaks = new Float32Array(0);
+    let level = new Float32Array(0);
     let xs = new Float32Array(0);
     let ys = new Float32Array(0);
-    let c1: RGB = [255, 78, 69];
-    let c2: RGB = [199, 15, 91];
+    let tint: RGB = [200, 200, 200];
     let frame = 0;
 
     const unsubscribe = spectrum.onFrame((freq, rate) => {
-      // 색은 몇 프레임마다 한 번만 읽는다 (곡이 바뀌면 CSS 트랜지션을 따라 부드럽게 변함)
-      if (frame++ % 6 === 0) {
-        c1 = readColor('--theme-1', c1);
-        c2 = readColor('--theme-2', c2);
+      // 테마 색을 회색과 섞어 차분하게 쓴다 (몇 프레임마다 한 번만 읽음)
+      if (frame++ % 8 === 0) {
+        const c = readColor('--theme-1', [255, 78, 69]);
+        tint = [c[0] * 0.55 + 200 * 0.45, c[1] * 0.55 + 200 * 0.45, c[2] * 0.55 + 200 * 0.45];
       }
-      const n = Math.max(32, Math.min(128, Math.floor(width / 12)));
+      const n = Math.max(24, Math.min(64, Math.floor(width / 24)));
       if (bands.length !== n) {
         bands = new Float32Array(n);
-        peaks = new Float32Array(n);
+        level = new Float32Array(n);
         xs = new Float32Array(n + 2);
         ys = new Float32Array(n + 2);
       }
       toBands(freq, rate, n, bands);
 
       ctx.clearRect(0, 0, width, height);
-      const top = height * 0.15;
-      const usable = height - top;
+      const usable = height * 0.7;
       const step = width / (n - 1);
 
-      // 양 끝은 바닥에 붙여서 그래프가 화면 가장자리에서 자연스럽게 시작/끝나게 한다
       xs[0] = 0;
       ys[0] = height;
       for (let i = 0; i < n; i++) {
-        const v = Math.pow(bands[i], 1.5);
-        peaks[i] = Math.max(v, peaks[i] - 0.006);
+        // 이웃 대역과 평균내고(공간), 이전 프레임과 섞어(시간) 부드럽고 차분하게 움직이게 한다
+        const a = bands[Math.max(0, i - 1)];
+        const b = bands[i];
+        const c = bands[Math.min(n - 1, i + 1)];
+        const target = Math.pow((a + b * 2 + c) / 4, 1.4);
+        level[i] += (target - level[i]) * 0.22;
         xs[i + 1] = i * step;
-        ys[i + 1] = height - v * usable;
+        ys[i + 1] = height - level[i] * usable;
       }
       xs[n + 1] = width;
       ys[n + 1] = height;
 
-      // 면: 위는 강조색, 아래로 갈수록 보조색으로 옅어짐
-      const fill = ctx.createLinearGradient(0, top, 0, height);
-      fill.addColorStop(0, rgba(c1, 0.4));
-      fill.addColorStop(0.55, rgba(c2, 0.28));
-      fill.addColorStop(1, rgba(c2, 0.04));
+      // 면: 아주 옅은 반투명 언덕 모양
+      const fill = ctx.createLinearGradient(0, height - usable, 0, height);
+      fill.addColorStop(0, rgba(tint, 0.16));
+      fill.addColorStop(1, rgba(tint, 0.02));
       ctx.beginPath();
       curve(ctx, xs, ys);
       ctx.closePath();
       ctx.fillStyle = fill;
       ctx.fill();
 
-      // 선: 강조색 + 은은한 빛
+      // 윤곽선: 얇고 흐리게
       ctx.beginPath();
       curve(ctx, xs, ys);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = rgba(c1, 0.85);
-      ctx.shadowColor = rgba(c1, 0.8);
-      ctx.shadowBlur = 10;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // 최고점 잔상: 천천히 내려오는 얇은 선
-      for (let i = 0; i < n; i++) ys[i + 1] = height - peaks[i] * usable;
-      ctx.beginPath();
-      curve(ctx, xs, ys);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = rgba(tint, 0.35);
       ctx.stroke();
     });
 

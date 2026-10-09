@@ -168,8 +168,10 @@ export const mockProvider: Provider = {
 /** 목 썸네일: 시드에 따라 그라데이션 SVG 생성 */
 export function mockImage(seed: string): string {
   const h = [...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
-  const h1 = h % 360;
-  const h2 = (h1 + 40 + (h % 120)) % 360;
+  // 시드가 한 글자만 달라도 색이 확실히 달라지도록 섞는다
+  const mixed = Math.imul(h ^ (h >>> 13), 2654435761) >>> 0;
+  const h1 = mixed % 360;
+  const h2 = (h1 + 40 + (mixed % 120)) % 360;
   const letter = seed.replace(/^(MPREb_mockAlbum|UCmockArtist0+|pl-?|v)/, '').slice(-2).toUpperCase();
   return `<svg xmlns="http://www.w3.org/2000/svg" width="544" height="544" viewBox="0 0 544 544">
 <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
