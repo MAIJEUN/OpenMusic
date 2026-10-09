@@ -2310,3 +2310,46 @@ p {
     display: none;
   }
 }
+
+/* 삭제 확인 창 */
+.confirm__target {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.confirm__art.collection-art {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
+.confirm__text {
+  min-width: 0;
+}
+.confirm__title {
+  font-weight: 500;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.confirm__sub {
+  color: var(--text-2);
+  font-size: 13px;
+  margin-top: 2px;
+}
+.confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.btn--danger {
+  background: #e5484d;
+  color: #fff;
+}
+.btn--danger:hover {
+  background: #d13438;
+}
