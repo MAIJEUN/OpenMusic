@@ -42,7 +42,7 @@ export class Reactive {
         // 바닥은 빨리 내려가고 천천히 올라감, 천장은 빨리 올라가고 천천히 내려감
         this.lo[i] += (x - this.lo[i]) * (x < this.lo[i] ? 0.35 : 0.015);
         this.hi[i] += (x - this.hi[i]) * (x > this.hi[i] ? 0.5 : 0.015);
-        const span = Math.max(0.1, this.hi[i] - this.lo[i]);
+        const span = Math.max(0.2, this.hi[i] - this.lo[i]);
         v = this.hi[i] < 0.04 ? 0 : (x - this.lo[i]) / span;
       } else {
         v = Math.max(0, (x / this.hi[0] - 0.12) / 0.88);
