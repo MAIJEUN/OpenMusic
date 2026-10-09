@@ -132,8 +132,8 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, registra
     if (!shuffle && isSourceHere) return player().togglePlay();
     const all = complete ? tracks : await getAllTracks();
     if (!all.length) return toast('재생할 수 있는 곡이 없습니다');
-    // 셔플 버튼은 셔플을 켜고, 재생 버튼은 현재 셔플 모드를 따른다
-    player().playTracks(all, 0, source, shuffle ? { shuffle: true, randomStart: true } : { randomStart: true });
+    // 셔플 버튼은 셔플을 켜고 무작위 곡부터, 재생 버튼은 셔플이 켜져 있어도 첫 곡부터 (그 뒤 곡들만 섞임)
+    player().playTracks(all, 0, source, shuffle ? { shuffle: true, randomStart: true } : {});
   };
 
   const playIndex = async (i: number) => {

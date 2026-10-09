@@ -186,6 +186,22 @@ p {
 .icon-btn--toggle:not(.icon-btn--active) {
   color: var(--text-3);
 }
+/* 켜진 토글(셔플·반복·스펙트럼): 테마 색 + 아래 점으로 확실히 표시 */
+.icon-btn--toggle.icon-btn--active {
+  position: relative;
+  color: var(--theme-light);
+}
+.icon-btn--toggle.icon-btn--active::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: currentColor;
+}
 .icon-btn--filled {
   background: rgba(255, 255, 255, 0.1);
   width: 48px;

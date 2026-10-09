@@ -82,7 +82,8 @@ function MyPlaylistView({ info, tracks, metaLine, empty, onMove, onDeleted }: Vi
   const playAll = (shuffle = false) => {
     if (!tracks.length) return toast('재생할 곡이 없습니다');
     if (!shuffle && isSourceHere) return player().togglePlay();
-    player().playTracks(tracks, 0, source, shuffle ? { shuffle: true, randomStart: true } : { randomStart: true });
+    // 재생 버튼은 셔플이 켜져 있어도 첫 곡부터 (그 뒤 곡들만 섞임), 셔플 버튼은 무작위 곡부터
+    player().playTracks(tracks, 0, source, shuffle ? { shuffle: true, randomStart: true } : {});
   };
   const menu = (e: MouseEvent) => openMenuFromEvent(e, collectionMenuItems(info, async () => tracks, { onDeleted }));
 
