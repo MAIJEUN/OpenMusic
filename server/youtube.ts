@@ -2,8 +2,7 @@
  * youtubei.js(InnerTube) 기반 YouTube Music 데이터 제공자.
  * 재생 자체는 브라우저의 YouTube IFrame Player가 담당하고, 서버는 메타데이터만 가져온다.
  */
-import { randomUUID } from 'node:crypto';
-import { Innertube, YTNodes } from 'youtubei.js';
+import { Innertube, YTMusic, YTNodes } from 'youtubei.js';
 import type {
   ArtistDetail,
   ArtistRef,
@@ -37,17 +36,18 @@ import type { Provider, Suggestions } from './provider.js';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any;
 
-const LANG = process.env.YT_LANG ?? 'ko';
-const LOCATION = process.env.YT_LOCATION ?? 'KR';
+export const ytOptions = { lang: 'ko', location: 'KR' };
 
 let innertube: Promise<Innertube> | null = null;
 
 function yt(): Promise<Innertube> {
   if (!innertube) {
     innertube = Innertube.create({
-      lang: LANG,
-      location: LOCATION,
+      lang: ytOptions.lang,
+      location: ytOptions.location,
       retrieve_player: false,
+      // 서버리스 환경의 CPU/요청 수를 아끼기 위해 세션 정보를 로컬에서 생성한다.
+      generate_session_locally: true,
     }).catch((err) => {
       innertube = null;
       throw err;
@@ -56,15 +56,18 @@ function yt(): Promise<Innertube> {
   return innertube;
 }
 
-/** 이어서 불러오기용 객체 보관소 (토큰 → 객체), 30분 후 만료 */
-const continuations = new Map<string, { value: AnyNode; fallback: TrackFallback; expires: number }>();
-
-function saveContinuation(value: AnyNode, fallback: TrackFallback): string {
-  const now = Date.now();
-  for (const [k, v] of continuations) if (v.expires < now) continuations.delete(k);
-  const token = randomUUID();
-  continuations.set(token, { value, fallback, expires: now + 30 * 60_000 });
-  return token;
+/**
+ * 재생목록 이어받기 토큰을 꺼낸다. 서버리스(Workers) 환경에서도 동작하도록
+ * 서버에 상태를 저장하지 않고 InnerTube continuation 문자열을 그대로 클라이언트에 넘긴다.
+ */
+function continuationToken(pl: AnyNode): string | undefined {
+  const items: AnyNode[] = Array.from(pl?.items ?? pl?.contents ?? []);
+  const item = items.find((i) => i?.type === 'ContinuationItem');
+  const fromItem = item?.endpoint?.payload?.token;
+  if (typeof fromItem === 'string') return fromItem;
+  const shelf: AnyNode = pl?.page?.contents_memo?.getType?.(YTNodes.MusicPlaylistShelf)?.[0];
+  const fromShelf = shelf?.continuation ?? pl?.page?.continuation_contents?.continuation;
+  return typeof fromShelf === 'string' ? fromShelf : undefined;
 }
 
 interface HeaderInfo {
@@ -133,19 +136,15 @@ async function getPlaylist(id: string): Promise<CollectionDetail> {
     thumbnail,
     year: h.year,
     tracks,
-    continuation: playlist.has_continuation ? saveContinuation(playlist, {}) : undefined,
+    continuation: continuationToken(playlist),
   };
 }
 
 async function getContinuation(token: string): Promise<ContinuationPage> {
-  const entry = continuations.get(token);
-  if (!entry) throw Object.assign(new Error('만료된 continuation 토큰입니다.'), { status: 410 });
-  continuations.delete(token);
-  const next = await entry.value.getContinuation();
-  return {
-    tracks: tracksFrom(next.items ?? next.contents, entry.fallback),
-    continuation: next.has_continuation ? saveContinuation(next, entry.fallback) : undefined,
-  };
+  const session = await yt();
+  const response = await session.actions.execute('/browse', { client: 'YTMUSIC', continuation: token });
+  const next = new YTMusic.Playlist(response, session.actions);
+  return { tracks: tracksFrom(next.items), continuation: continuationToken(next) };
 }
 
 async function getAlbum(id: string): Promise<CollectionDetail> {

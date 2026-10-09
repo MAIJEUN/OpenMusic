@@ -1,0 +1,12 @@
+name = "openmusic-api"
+main = "worker/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[alias]
+"youtubei.js" = "youtubei.js/cf-worker"
+
+[vars]
+YT_LANG = "ko"
+YT_LOCATION = "KR"

@@ -6,12 +6,14 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "tsx watch server/index.ts",
+    "dev:server": "tsx watch server/node.ts",
     "dev:web": "vite",
-    "dev:mock": "concurrently -k -n api,web -c blue,magenta \"tsx watch server/index.ts --mock\" \"vite\"",
-    "build": "vite build",
-    "start": "tsx server/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "dev:mock": "concurrently -k -n api,web -c blue,magenta \"tsx watch server/node.ts --mock\" \"vite\"",
+    "build": "vite build && node scripts/spa-fallback.mjs",
+    "start": "tsx server/node.ts",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p worker/tsconfig.json"
   },
   "repository": {
     "type": "git",
@@ -22,7 +24,8 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "express": "^5.2.1",
+    "@hono/node-server": "^2.1.4",
+    "hono": "^4.13.13",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-icons": "^5.7.0",
@@ -32,7 +35,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
+    "@cloudflare/workers-types": "^5.20261009.1",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -40,6 +43,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.6",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "wrangler": "^4.149.0"
   }
 }
