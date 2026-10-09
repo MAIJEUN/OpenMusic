@@ -11,8 +11,8 @@
     "dev:mock": "concurrently -k -n api,web -c blue,magenta \"tsx watch server/node.ts --mock\" \"vite\"",
     "build": "vite build && node scripts/spa-fallback.mjs",
     "start": "tsx server/node.ts",
-    "worker:dev": "wrangler dev",
-    "worker:deploy": "wrangler deploy",
+    "worker:dev": "npm run build && wrangler dev",
+    "worker:deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p worker/tsconfig.json"
   },
   "repository": {
