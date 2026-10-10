@@ -429,14 +429,37 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
   for (let i = 0; i < shifted.length && shifted[i].start <= t; i++) active = i;
   const cur = shifted[active];
   const next = shifted[active + 1];
-  // 간주: 지금 줄이 끝났고 다음 줄까지 2초 넘게 남았으면 • • • 로 표시
+  // 간주: 줄 사이(또는 첫 줄 전)에 2.5초 넘게 비는 구간이면 다음 줄이 시작될 때까지 • • • 로 표시
   const lineEnd = cur ? Math.min(cur.end, next?.start ?? cur.end) : 0;
-  const inGap = cur ? t > lineEnd + 0.3 && !!next && next.start - t > 2 : shifted.length > 0 && shifted[0].start - t > 2;
-  const gapProgress = inGap
-    ? Math.min(1, Math.max(0, (t - (cur ? lineEnd : 0)) / Math.max(0.1, (next?.start ?? shifted[0].start) - (cur ? lineEnd : 0))))
-    : 0;
+  const gapStart = cur ? lineEnd + 0.3 : 0;
+  const gapEnd = cur ? next?.start : shifted[0]?.start;
+  const inGap = gapEnd !== undefined && gapEnd - (cur ? lineEnd : 0) > 2.5 && t > gapStart && t < gapEnd;
+  const gapProgress = inGap && gapEnd !== undefined ? Math.min(1, Math.max(0, (t - gapStart) / Math.max(0.1, gapEnd - gapStart))) : 0;
   const focus = inGap ? (cur ? active + 0.5 : -0.5) : active;
-  const lineProgress = cur && !inGap ? Math.min(1, Math.max(0, (t - cur.start) / Math.max(0.3, lineEnd - cur.start))) : 0;
+
+  // 방금 끝난 줄: 한 번 투명해졌다가 비활성 색으로 돌아오는 연출에 쓴다
+  const lit = inGap ? -1 : active;
+  const litRef = useRef(lit);
+  const outRef = useRef(-1);
+  if (litRef.current !== lit) {
+    outRef.current = litRef.current;
+    litRef.current = lit;
+  }
+
+  // 간주 표시(• • •)는 끝날 때 바로 사라지지 않고 잠깐 머물며 사라진다
+  const lastGap = useRef<{ anchor: number; progress: number } | null>(null);
+  if (inGap) lastGap.current = { anchor: cur ? active : -1, progress: gapProgress };
+  const [leavingGap, setLeavingGap] = useState<{ anchor: number } | null>(null);
+  useEffect(() => {
+    if (inGap || !lastGap.current) {
+      setLeavingGap(null);
+      return;
+    }
+    setLeavingGap({ anchor: lastGap.current.anchor });
+    lastGap.current = null;
+    const timer = setTimeout(() => setLeavingGap(null), 550);
+    return () => clearTimeout(timer);
+  }, [inGap]);
 
   // 사용자가 직접 스크롤하면 4초 동안은 자동 스크롤을 멈춘다
   useEffect(() => {
@@ -454,7 +477,7 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
 
   useEffect(() => {
     if (performance.now() - userScrollAt.current < 4000) return;
-    const target = ref.current?.querySelector<HTMLElement>('.synced__line--active, .synced__gap');
+    const target = ref.current?.querySelector<HTMLElement>('.synced__line--active, .synced__gap:not(.synced__gap--out)');
     const parent = scrollParent(ref.current);
     if (!target || !parent) return;
     const pr = parent.getBoundingClientRect();
@@ -464,8 +487,14 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
     parent.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   }, [focus]);
 
+  const gapAnchor = inGap ? (cur ? active : -1) : leavingGap ? leavingGap.anchor : null;
   const gap = (
-    <div className="synced__gap" aria-hidden style={{ ['--gp' as string]: gapProgress }}>
+    <div
+      key={`gap-${gapAnchor}`}
+      className={`synced__gap ${inGap ? '' : 'synced__gap--out'}`}
+      aria-hidden
+      style={{ ['--gp' as string]: inGap ? gapProgress : 1 }}
+    >
       <span />
       <span />
       <span />
@@ -474,15 +503,16 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
 
   return (
     <div ref={ref} className="synced">
-      {inGap && !cur && gap}
+      {gapAnchor === -1 && gap}
       {shifted.map((l, i) => {
-        const isActive = i === active && !inGap;
+        const isActive = i === lit;
+        const isOut = !isActive && i === outRef.current;
         const dist = Math.min(4, Math.abs(i - focus));
         return (
           <Fragment key={i}>
             <p
-              className={`synced__line ${isActive ? 'synced__line--active' : i <= active ? 'synced__line--past' : ''}`}
-              style={{ ['--d' as string]: dist, ...(isActive ? { ['--lp' as string]: `${Math.round(lineProgress * 100)}%` } : {}) }}
+              className={`synced__line ${isActive ? 'synced__line--active' : i <= active ? 'synced__line--past' : ''} ${isOut ? 'synced__line--out' : ''}`}
+              style={{ ['--d' as string]: dist }}
               onClick={() => {
                 userScrollAt.current = 0;
                 player().seek(Math.max(0, l.start));
@@ -490,7 +520,7 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
             >
               {l.text}
             </p>
-            {inGap && i === active && gap}
+            {gapAnchor === i && gap}
           </Fragment>
         );
       })}
