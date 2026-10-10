@@ -63,8 +63,9 @@ export const api = {
     cachedGet<UpNext>(`/upnext?${videoId ? `v=${enc(videoId)}` : ''}${list ? `&list=${enc(list)}` : ''}`),
   search: (q: string, filter: SearchFilter = 'song') => cachedGet<SearchResult>(`/search?q=${enc(q)}&filter=${filter}`),
   lyrics: (videoId: string) => cachedGet<Lyrics | null>(`/lyrics/${enc(videoId)}`, 60 * 60_000),
+  // v: 자막 고르는 방식이 바뀌면 올려서 브라우저에 1시간 남는 이전 응답을 쓰지 않게 한다
   captions: (videoId: string, lang?: string) =>
-    cachedGet<Captions | null>(`/captions/${enc(videoId)}${lang ? `?lang=${enc(lang)}` : ''}`, 60 * 60_000),
+    cachedGet<Captions | null>(`/captions/${enc(videoId)}?v=2${lang ? `&lang=${enc(lang)}` : ''}`, 60 * 60_000),
 };
 
 /** 재생목록 전체 트랙을 불러온다 (이어받기 토큰을 끝까지 따라감) */
