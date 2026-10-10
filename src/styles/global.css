@@ -1696,11 +1696,6 @@ p {
 }
 
 /* 시간에 맞춰 강조되는 실시간 가사 */
-@property --lp {
-  syntax: '<percentage>';
-  inherits: false;
-  initial-value: 0%;
-}
 .np__panel--lyrics {
   overflow-x: hidden;
   /* 위아래 끝을 부드럽게 흐리게 */
@@ -1743,24 +1738,70 @@ p {
 }
 .synced__line--active {
   opacity: 1;
-  /* 노래방처럼 부르는 만큼 왼쪽부터 밝아진다 */
-  color: transparent;
-  background: linear-gradient(90deg, #fff var(--lp), rgba(255, 255, 255, 0.45) var(--lp)) text;
-  -webkit-background-clip: text;
-  filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.22));
-  transition:
-    --lp 0.3s linear,
-    opacity 0.35s;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.22);
 }
-.synced__line--active:hover {
-  background: linear-gradient(90deg, #fff var(--lp), rgba(255, 255, 255, 0.7) var(--lp)) text;
-  -webkit-background-clip: text;
+/* 끝난 줄: 한 번 완전히 투명해졌다가 비활성 색으로 다시 나타난다 */
+.synced__line--out {
+  animation: line-out 0.8s ease;
+}
+@keyframes line-out {
+  0% {
+    opacity: 1;
+    color: #fff;
+  }
+  40% {
+    opacity: 0;
+    color: #fff;
+  }
+  41% {
+    opacity: 0;
+    color: rgba(255, 255, 255, 0.32);
+  }
+  100% {
+    opacity: calc(1 - var(--d, 0) * 0.14);
+    color: rgba(255, 255, 255, 0.32);
+  }
 }
 /* 인트로·간주: 다음 가사까지 점 세 개가 차례로 차오른다 */
 .synced__gap {
   display: flex;
   gap: 10px;
   padding: 14px 12px;
+  max-height: 40px;
+  box-sizing: border-box;
+  overflow: hidden;
+  transform-origin: 12px center;
+  animation: gap-in 0.45s ease;
+}
+/* 간주가 끝나면 점이 작아지며 사라지고 자리도 부드럽게 접힌다 */
+.synced__gap--out {
+  animation: gap-out 0.5s ease forwards;
+}
+@keyframes gap-in {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+@keyframes gap-out {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  45% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.6);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
 }
 .synced__gap span {
   width: 10px;

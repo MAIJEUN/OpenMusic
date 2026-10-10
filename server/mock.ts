@@ -188,7 +188,11 @@ export const mockProvider: Provider = {
     if (/[12]s?$/.test(videoId)) {
       const lines = LYRICS.split('\n')
         .filter((l) => l.trim() && !l.startsWith('('))
-        .map((text, i) => ({ start: 6 + i * 4, end: 6 + i * 4 + 4, text }));
+        .map((text, i) => {
+          // 4번째 줄 뒤에 6초 간주
+          const start = 6 + i * 4 + (i >= 4 ? 6 : 0);
+          return { start, end: start + 3.5, text };
+        });
       return { text: LYRICS, source: '출처: OpenMusic Mock Lyrics (동기화)', synced: lines };
     }
     return { text: LYRICS, source: '출처: OpenMusic Mock Lyrics' };
