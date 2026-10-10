@@ -5,7 +5,7 @@
 import { Innertube, YTMusic, YTNodes } from 'youtubei.js';
 import type { ArtistRef, CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
 import { stripVL } from '../shared/links.js';
-import { fetchCaptions } from './captions.js';
+import { fetchLyrics, type LyricsQuery } from './lyrics.js';
 import { bestThumb, parseRuns, runsOf, textOf, trackFromListItem, trackFromPanelVideo, type TrackFallback } from './normalize.js';
 import type { Provider } from './provider.js';
 
@@ -185,21 +185,8 @@ async function upNext(videoId?: string, playlistId?: string): Promise<UpNext> {
   return { playlistId: panel?.playlist_id ?? list, title: panel?.title, tracks };
 }
 
-async function lyrics(videoId: string): Promise<Lyrics | null> {
-  const music = (await yt()).music;
-  try {
-    const shelf: AnyNode = await music.getLyrics(videoId);
-    if (!shelf) return null;
-    const text = textOf(shelf.description);
-    if (!text) return null;
-    return { text, source: textOf(shelf.footer) || undefined };
-  } catch {
-    return null;
-  }
-}
-
-async function captions(videoId: string, lang?: string) {
-  return fetchCaptions(await yt(), videoId, lang, ytOptions.lang);
+async function lyrics(videoId: string, q: LyricsQuery = {}): Promise<Lyrics | null> {
+  return fetchLyrics(await yt(), videoId, q);
 }
 
 async function search(query: string, filter: SearchFilter): Promise<SearchResult> {
@@ -226,6 +213,5 @@ export const youtubeProvider: Provider = {
   album: getAlbum,
   upNext,
   lyrics,
-  captions,
   search,
 };

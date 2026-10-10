@@ -171,29 +171,14 @@ export const mockProvider: Provider = {
   async lyrics(videoId) {
     await delay();
     if (videoId.endsWith('3')) return null;
+    // 끝자리 1·2: 시간 동기화 가사 (6초부터 4초 간격)
+    if (/[12]$/.test(videoId)) {
+      const lines = LYRICS.split('\n')
+        .filter((l) => l.trim() && !l.startsWith('('))
+        .map((text, i) => ({ start: 6 + i * 4, end: 6 + i * 4 + 4, text }));
+      return { text: LYRICS, source: '출처: OpenMusic Mock Lyrics (동기화)', synced: lines };
+    }
     return { text: LYRICS, source: '출처: OpenMusic Mock Lyrics' };
-  },
-
-  async captions(videoId, lang) {
-    await delay();
-    // 끝자리 4: 자막 없음 (끝자리 3은 가사 없이 자막만 있음)
-    if (videoId.endsWith('4')) return null;
-    const tracks = [
-      { code: '.ko', name: '한국어', auto: false },
-      { code: '.en', name: '영어', auto: false },
-      { code: 'a.ko', name: '한국어 (자동 생성됨)', auto: true },
-    ];
-    let cur = tracks.find((t) => t.code === lang) ?? tracks[0];
-    // 끝자리 2: 영어 자막이 비어 있는 영상 (한국어로 대신 보여줌)
-    const unavailable = videoId.endsWith('2') && cur.code === '.en' ? cur.code : undefined;
-    if (unavailable) cur = tracks[0];
-    const texts = LYRICS.split('\n').filter((l) => l.trim() && !l.startsWith('('));
-    const lines = texts.map((text, i) => ({
-      start: 6 + i * 4,
-      end: 6 + i * 4 + 3.6,
-      text: cur.code === '.en' ? `[EN] line ${i + 1}: ${text}` : cur.auto ? `(자동) ${text}` : text,
-    }));
-    return { tracks, lang: cur.code, lines, unavailable };
   },
 
 };

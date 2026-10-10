@@ -81,14 +81,11 @@ export function createApp(provider: Provider, config: ServerConfig) {
 
   app.get('/lyrics/:id', ttl(3600), async (c) => {
     const id = need(c.req.param('id'), 'id');
-    const lyrics = await cached(`lyrics:${id}`, 60 * MIN, () => provider.lyrics(id));
+    const str = (k: string) => c.req.query(k)?.trim().slice(0, 200) || undefined;
+    const duration = Number(c.req.query('duration')) || undefined;
+    const q = { title: str('title'), artist: str('artist'), album: str('album'), duration };
+    const lyrics = await cached(`lyrics:${id}`, 60 * MIN, () => provider.lyrics(id, q));
     return c.json(lyrics);
-  });
-
-  app.get('/captions/:id', ttl(3600), async (c) => {
-    const id = need(c.req.param('id'), 'id');
-    const lang = c.req.query('lang')?.trim().slice(0, 20) || undefined;
-    return c.json(await cached(`captions:${id}:${lang ?? ''}`, 60 * MIN, () => provider.captions(id, lang)));
   });
 
   // 앨범 아트 색상 추출용 이미지 중계. 브라우저 캔버스로 픽셀을 읽으려면 CORS 허용이 필요한데

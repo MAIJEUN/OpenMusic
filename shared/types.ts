@@ -62,32 +62,15 @@ export interface SearchResult {
 export interface Lyrics {
   text: string;
   source?: string;
+  /** 시간 동기화 가사 (있을 때만) */
+  synced?: LyricLine[];
 }
 
-/** YouTube 자막 언어 */
-export interface CaptionTrack {
-  /** 자막 ID. 같은 언어라도 직접 만든 자막(.ko)과 자동 생성 자막(a.ko)은 다르다 */
-  code: string;
-  /** 표시 이름 (예: 한국어, 영어(자동 생성됨)) */
-  name: string;
-  /** 자동 생성 자막 여부 */
-  auto: boolean;
-}
-
-/** 시간이 붙은 자막 한 줄 (초) */
-export interface CaptionLine {
+/** 시간이 붙은 가사 한 줄 (초) */
+export interface LyricLine {
   start: number;
   end: number;
   text: string;
-}
-
-export interface Captions {
-  tracks: CaptionTrack[];
-  /** 지금 내용의 자막 ID */
-  lang: string;
-  lines: CaptionLine[];
-  /** 요청한 자막에 내용이 없어 다른 자막을 대신 보여줄 때, 요청했던 자막 ID */
-  unavailable?: string;
 }
 
 export interface UpNext {

@@ -2,16 +2,15 @@ import { DndContext, MouseSensor, TouchSensor, closestCenter, useSensor, useSens
 import { restrictToVerticalAxis } from './dndModifiers';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useAsync } from '../hooks/useAsync';
-import { MdCheck, MdClosedCaption, MdClosedCaptionDisabled, MdClosedCaptionOff, MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
+import { MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
 import { Link } from 'react-router-dom';
-import type { CaptionLine, Captions, Lyrics } from '../../shared/types';
+import type { LyricLine, Lyrics, Track } from '../../shared/types';
 import { api } from '../lib/api';
-import { matchCaption } from '../../shared/captionMatch';
 import { artistNames, formatTime } from '../lib/format';
-import { currentEngine, player, usePlayer, type QueueItem } from '../store/player';
-import { useUi, type MenuState, type NowPlayingTab } from '../store/ui';
+import { player, usePlayer, type QueueItem } from '../store/player';
+import { useUi, type NowPlayingTab } from '../store/ui';
 import { Equalizer } from './Equalizer';
 import { IconButton } from './IconButton';
 import { openMenuFromEvent, saveTracksTo, trackMenuItems } from './menus';
@@ -73,7 +72,6 @@ export function NowPlaying() {
                     동영상
                   </button>
                 </div>
-                {mode === 'video' && <VideoCaptionsButton />}
               </div>
               <div className={`np__art ${mode === 'video' ? 'np__art--video' : ''}`}>
                 {mode === 'video' ? (
@@ -127,7 +125,7 @@ export function NowPlaying() {
               </div>
               <div className="np__panel">
                 {tab === 'upnext' && <UpNextPanel onNavigate={() => setOpen(false)} />}
-                {tab === 'lyrics' && <LyricsPanel videoId={t.videoId} />}
+                {tab === 'lyrics' && <LyricsPanel key={t.videoId} track={t} />}
               </div>
             </div>
           </div>
@@ -297,135 +295,62 @@ function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; 
   );
 }
 
-/** 가사 탭에서 내용이 비어 있다고 확인된 자막 (영상 ID → 자막 ID들) */
-const emptyCaptions = new Map<string, Set<string>>();
-
-/** 동영상 위 YouTube 자막: 꺼져 있으면 켜고, 켜져 있으면 자막 고르기 메뉴 */
-function VideoCaptionsButton() {
-  const on = useUi((s) => s.playback.videoCaptions);
-  const setPlayback = useUi((s) => s.setPlayback);
-  const setCaptionTrack = useUi((s) => s.setCaptionTrack);
-  const onClick = (e: MouseEvent) => {
-    if (!on) return setPlayback({ videoCaptions: true });
-    const { tracks, current } = currentEngine()?.getCaptionTracks?.() ?? { tracks: [] };
-    const s = usePlayer.getState();
-    const empty = [...(emptyCaptions.get(s.queue[s.index]?.track.videoId ?? '') ?? [])];
-    const items: MenuState['items'] = tracks.map((t) => ({
-      label: matchCaption(empty, t.id, (x) => x) ? `${t.name} (내용 없음)` : t.name,
-      icon: t.id === current ? <MdCheck /> : <span />,
-      // 가사 탭의 자막도 같은 자막으로 바뀐다
-      onSelect: () => setCaptionTrack(t.id),
-    }));
-    if (!items.length) items.push({ label: '자막 목록을 불러오는 중이에요', icon: <span />, onSelect: () => {} });
-    items.push('divider', { label: '자막 끄기', icon: <MdClosedCaptionOff />, onSelect: () => setPlayback({ videoCaptions: false }) });
-    openMenuFromEvent(e, items);
-  };
-  return (
-    <IconButton
-      label={on ? '동영상 자막 선택' : '동영상 자막 켜기'}
-      className="icon-btn--toggle np__cc"
-      active={on}
-      onClick={onClick}
-    >
-      {on ? <MdClosedCaption /> : <MdClosedCaptionDisabled />}
-    </IconButton>
-  );
-}
-
 /* ------------------------------ 가사 ------------------------------ */
 
-/** 기본 자막을 받은 뒤, 사용자가 고른 언어가 있으면 그 언어로 다시 받는다 */
-async function loadCaptions(videoId: string, lang?: string): Promise<Captions | null> {
-  const first = await api.captions(videoId).catch(() => null);
-  // 동영상 자막 메뉴에서 고른 자막은 ID가 조금 다를 수 있어 같은 언어·종류로 맞춘다
-  const want = first && matchCaption(first.tracks, lang, (t) => t.code);
-  if (!first || !want || first.lang === want.code) return first;
-  return (await api.captions(videoId, want.code).catch(() => null)) ?? first;
-}
-
-function LyricsPanel({ videoId }: { videoId: string }) {
-  const pref = useUi((s) => s.lyricsPref);
-  const setPref = useUi((s) => s.setLyricsPref);
-  const setCaptionTrack = useUi((s) => s.setCaptionTrack);
-  const lyrics = useAsync<Lyrics | null>(() => api.lyrics(videoId).catch(() => null), [videoId]);
-  const caps = useAsync<Captions | null>(() => loadCaptions(videoId, pref.lang), [videoId, pref.lang]);
-
-  // 내용이 빈 자막은 동영상 자막 메뉴에도 표시한다
-  useEffect(() => {
-    const miss = caps.data?.unavailable;
-    if (!miss) return;
-    const set = emptyCaptions.get(videoId) ?? new Set<string>();
-    set.add(miss);
-    emptyCaptions.set(videoId, set);
-  }, [caps.data, videoId]);
-
-  const hasLyrics = !!lyrics.data;
-  const hasCaps = !!caps.data?.lines.length;
-  const wantCaps = pref.source === 'captions';
-  // 원하는 쪽이 준비되면 바로 보여주고, 없으면 다른 쪽이 올 때까지 기다린다
-  const view: 'lyrics' | 'captions' | null = wantCaps
-    ? hasCaps ? 'captions' : !caps.loading && hasLyrics ? 'lyrics' : null
-    : hasLyrics ? 'lyrics' : !lyrics.loading && hasCaps ? 'captions' : null;
-  const loading = !view && (lyrics.loading || caps.loading);
+function LyricsPanel({ track }: { track: Track }) {
+  const duration = usePlayer((s) => s.duration);
+  // 곡 길이는 재생이 시작돼야 정확해서, 처음에는 목록에 있던 길이를 쓴다
+  const dur = Math.round(track.duration || duration || 0);
+  const { loading, data } = useAsync<Lyrics | null>(
+    () =>
+      api
+        .lyrics(track.videoId, { title: track.title, artist: artistNames(track.artists), album: track.album?.name, duration: dur || undefined })
+        .catch(() => null),
+    [track.videoId],
+  );
+  const [mode, setMode] = useState<'synced' | 'plain'>('synced');
+  // 싱크 조절: 뮤직비디오처럼 앞에 인트로가 있으면 가사 시간이 어긋날 수 있다
+  const [offset, setOffset] = useState(0);
+  useEffect(() => setOffset(0), [track.videoId]);
 
   if (loading) return <div className="panel-spinner"><div className="spinner" /></div>;
-  if (!view) return <div className="panel-empty">가사와 자막을 사용할 수 없습니다</div>;
+  if (!data) return <div className="panel-empty">가사를 사용할 수 없습니다</div>;
+  const synced = !!data.synced?.length && mode === 'synced';
 
   return (
     <div className="lyrics">
-      {(hasLyrics && hasCaps) || view === 'captions' ? (
+      {data.synced?.length ? (
         <div className="lyrics__bar">
-          {hasLyrics && hasCaps && (
-            <div className="lyrics__switch" role="tablist">
-              <button type="button" className={view === 'lyrics' ? 'is-active' : ''} onClick={() => setPref({ source: 'lyrics' })}>
-                가사
+          <div className="lyrics__switch" role="tablist">
+            <button type="button" className={mode === 'synced' ? 'is-active' : ''} onClick={() => setMode('synced')}>
+              실시간 가사
+            </button>
+            <button type="button" className={mode === 'plain' ? 'is-active' : ''} onClick={() => setMode('plain')}>
+              전체 가사
+            </button>
+          </div>
+          {synced && (
+            <div className="lyrics__offset" title="가사가 노래보다 빠르거나 느리면 조절하세요">
+              <button type="button" aria-label="가사 0.5초 빠르게" onClick={() => setOffset((o) => Math.round((o - 0.5) * 10) / 10)}>
+                −
               </button>
-              <button type="button" className={view === 'captions' ? 'is-active' : ''} onClick={() => setPref({ source: 'captions' })}>
-                YouTube 자막
+              <button type="button" className="lyrics__offset-value" aria-label="싱크 초기화" onClick={() => setOffset(0)}>
+                {offset === 0 ? '싱크' : `${offset > 0 ? '+' : ''}${offset.toFixed(1)}초`}
+              </button>
+              <button type="button" aria-label="가사 0.5초 느리게" onClick={() => setOffset((o) => Math.round((o + 0.5) * 10) / 10)}>
+                +
               </button>
             </div>
-          )}
-          {view === 'captions' && caps.data && caps.data.tracks.length > 1 && (
-            <select
-              className="lyrics__lang"
-              value={caps.data.lang}
-              onChange={(e) => {
-                // 동영상 자막도 같은 자막으로 바뀐다
-                setCaptionTrack(e.target.value);
-                setPref({ source: 'captions' });
-              }}
-              aria-label="자막 언어"
-            >
-              {caps.data.tracks.map((tr) => (
-                <option key={tr.code} value={tr.code}>
-                  {tr.name}
-                </option>
-              ))}
-            </select>
           )}
         </div>
       ) : null}
 
-      {view === 'lyrics' && lyrics.data ? (
-        <>
-          <p className="lyrics__text">{lyrics.data.text}</p>
-          {lyrics.data.source && <p className="lyrics__source">{lyrics.data.source}</p>}
-        </>
-      ) : caps.data ? (
-        <>
-          {caps.data.unavailable && (
-            <p className="lyrics__notice">
-              고른 자막({caps.data.tracks.find((t) => t.code === caps.data!.unavailable)?.name ?? caps.data.unavailable})은 내용이 비어 있어서{' '}
-              {caps.data.tracks.find((t) => t.code === caps.data!.lang)?.name ?? '다른'} 자막을 대신 보여드려요. 영상에 자막이 이미 들어가 있는 경우 이럴 수 있어요.
-            </p>
-          )}
-          <SyncedLines key={`${videoId}:${caps.data.lang}`} lines={caps.data.lines} />
-          <p className="lyrics__source">
-            YouTube 자막 · {caps.data.tracks.find((t) => t.code === caps.data!.lang)?.name ?? caps.data.lang}
-            {caps.data.tracks.find((t) => t.code === caps.data!.lang)?.auto ? ' · 자동 생성 자막은 정확하지 않을 수 있어요' : ''}
-          </p>
-        </>
-      ) : null}
+      {synced ? (
+        <SyncedLines key={track.videoId} lines={data.synced!} offset={offset} />
+      ) : (
+        <p className="lyrics__text">{data.text}</p>
+      )}
+      {data.source && <p className="lyrics__source">{data.source}</p>}
     </div>
   );
 }
@@ -439,8 +364,8 @@ function scrollParent(el: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-/** 재생 위치에 맞춰 현재 줄을 강조하고 가운데로 스크롤하는 자막 가사 */
-function SyncedLines({ lines }: { lines: CaptionLine[] }) {
+/** 재생 위치에 맞춰 현재 줄을 강조하고 가운데로 스크롤하는 실시간 가사 */
+function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: number }) {
   const position = usePlayer((s) => s.position);
   const ref = useRef<HTMLDivElement>(null);
   const userScrollAt = useRef(0);
@@ -448,7 +373,7 @@ function SyncedLines({ lines }: { lines: CaptionLine[] }) {
 
   // 지금 줄: 시작 시간이 지난 마지막 줄 (살짝 앞당겨서 말하기 전에 강조)
   let active = -1;
-  for (let i = 0; i < starts.length && starts[i] <= position + 0.2; i++) active = i;
+  for (let i = 0; i < starts.length && starts[i] + offset <= position + 0.2; i++) active = i;
 
   // 사용자가 직접 스크롤하면 4초 동안은 자동 스크롤을 멈춘다
   useEffect(() => {
@@ -483,7 +408,7 @@ function SyncedLines({ lines }: { lines: CaptionLine[] }) {
           className={`synced__line ${i === active ? 'synced__line--active' : i < active ? 'synced__line--past' : ''}`}
           onClick={() => {
             userScrollAt.current = 0;
-            player().seek(l.start);
+            player().seek(Math.max(0, l.start + offset));
           }}
         >
           {l.text}
