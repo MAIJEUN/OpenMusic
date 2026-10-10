@@ -1,24 +1,41 @@
-// 임시 진단: NetEase 단어별 가사 / LRCLIB Enhanced LRC
-import { neteaseWordLyrics } from '../../server/netease.ts';
-const songs: [string, string, number][] = [
-  ['Ditto', 'NewJeans', 186],
-  ['Love wins all', 'IU', 272],
-  ['アイドル', 'YOASOBI', 214],
-  ['You & 合図', 'Otonose Kanade', 159],
-  ['Supernova', 'aespa', 179],
-  ['Blinding Lights', 'The Weeknd', 200],
+// 임시 진단: NetEase 엔드포인트별 응답 형식
+const H = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36', Referer: 'https://music.163.com/' };
+const q = 'Ditto NewJeans';
+const tries: [string, string, RequestInit?][] = [
+  ['cloudsearch/pc GET', `https://music.163.com/api/cloudsearch/pc?${new URLSearchParams({ s: q, type: '1', limit: '5', offset: '0' })}`],
+  ['search/get GET', `https://music.163.com/api/search/get?${new URLSearchParams({ s: q, type: '1', limit: '5' })}`],
+  ['search/pc POST', 'https://music.163.com/api/search/pc', { method: 'POST', body: new URLSearchParams({ s: q, type: '1', limit: '5', offset: '0' }) }],
+  ['interface search/get', `https://interface.music.163.com/api/search/get?${new URLSearchParams({ s: q, type: '1', limit: '5' })}`],
+  ['search/suggest/web', `https://music.163.com/api/search/suggest/web?${new URLSearchParams({ s: q })}`],
 ];
-const r0 = await fetch('https://music.163.com/api/search/get/web?s=Ditto&type=1&limit=3', { headers: { Referer: 'https://music.163.com/' } });
-console.log(`PROBE raw search http=${r0.status} body=${(await r0.text()).slice(0, 200)}`);
-for (const [t, a, d] of songs) {
-  const t0 = Date.now();
+let id: number | undefined;
+for (const [name, url, init] of tries) {
   try {
-    const r = await neteaseWordLyrics({ titles: [t], artist: a, duration: d });
-    console.log(`PROBE ${t} / ${a}: ${Date.now() - t0}ms lines=${r?.lines.length ?? 0} dur=${r?.duration} first=${JSON.stringify(r?.lines[1])?.slice(0, 220)}`);
+    const r = await fetch(url, { ...init, headers: { ...H, ...(init?.method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}) } });
+    const text = await r.text();
+    let songs: any[] = [];
+    try {
+      const j = JSON.parse(text);
+      songs = j?.result?.songs ?? j?.result?.songs ?? [];
+    } catch {}
+    console.log(`PROBE [${name}] http=${r.status} songs=${songs.length} first=${songs[0] ? `${songs[0].id} ${songs[0].name} / ${(songs[0].ar ?? songs[0].artists ?? []).map((a: any) => a.name)} / ${songs[0].dt ?? songs[0].duration}` : text.slice(0, 120)}`);
+    if (!id && songs[0]) id = songs[0].id;
   } catch (e) {
-    console.log(`PROBE ${t} ERROR ${(e as Error).message}`);
+    console.log(`PROBE [${name}] ERROR ${(e as Error).message}`);
   }
-  const lr = await fetch(`https://lrclib.net/api/search?${new URLSearchParams({ track_name: t, artist_name: a })}`).then((r) => r.json()).catch(() => []);
-  const enh = (lr as any[]).filter((x) => x.syncedLyrics && /<\d+:\d+/.test(x.syncedLyrics)).length;
-  console.log(`PROBE    lrclib results=${(lr as any[]).length} enhanced=${enh}`);
+}
+if (id) {
+  for (const url of [
+    `https://music.163.com/api/song/lyric/v1?${new URLSearchParams({ id: String(id), lv: '0', yv: '0', tv: '0', rv: '0', kv: '0', cp: 'false' })}`,
+    `https://music.163.com/api/song/lyric?${new URLSearchParams({ id: String(id), lv: '-1', kv: '-1', tv: '-1', yv: '-1' })}`,
+  ]) {
+    const r = await fetch(url, { headers: H });
+    const t = await r.text();
+    let info = t.slice(0, 120);
+    try {
+      const j = JSON.parse(t);
+      info = `keys=${Object.keys(j)} yrc=${(j.yrc?.lyric ?? '').length} lrc=${(j.lrc?.lyric ?? '').length} yrcSample=${JSON.stringify((j.yrc?.lyric ?? '').split('\n').slice(2, 4))}`;
+    } catch {}
+    console.log(`PROBE lyric ${url.split('?')[0]} http=${r.status} ${info.slice(0, 400)}`);
+  }
 }

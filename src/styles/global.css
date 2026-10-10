@@ -1724,8 +1724,9 @@ p {
   opacity: calc(1 - var(--d, 0) * 0.14);
   cursor: pointer;
   transition:
-    color 0.35s,
-    opacity 0.35s,
+    color 0.5s ease,
+    opacity 0.5s ease,
+    text-shadow 0.5s ease,
     background-color 0.2s;
 }
 .synced__line:hover {
@@ -1741,28 +1742,17 @@ p {
   color: #fff;
   text-shadow: 0 0 18px rgba(255, 255, 255, 0.22);
 }
-/* 끝난 줄: 한 번 완전히 투명해졌다가 비활성 색으로 다시 나타난다 */
-.synced__line--out {
-  animation: line-out 0.8s ease;
+/* 단어별 시간이 있는 줄: 단어마다 부르는 만큼 왼쪽부터 밝아진다 */
+.synced__line--words {
+  text-shadow: none;
 }
-@keyframes line-out {
-  0% {
-    opacity: 1;
-    color: #fff;
-  }
-  40% {
-    opacity: 0;
-    color: #fff;
-  }
-  41% {
-    opacity: 0;
-    color: rgba(255, 255, 255, 0.32);
-  }
-  100% {
-    opacity: calc(1 - var(--d, 0) * 0.14);
-    color: rgba(255, 255, 255, 0.32);
-  }
+.synced__word {
+  color: transparent;
+  background: linear-gradient(90deg, #fff var(--wp), rgba(255, 255, 255, 0.42) var(--wp)) text;
+  -webkit-background-clip: text;
+  white-space: pre-wrap;
 }
+
 /* 인트로·간주: 다음 가사까지 점 세 개가 차례로 차오른다 */
 .synced__gap {
   display: flex;

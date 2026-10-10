@@ -6,7 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from 
 import { useAsync } from '../hooks/useAsync';
 import { MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
 import { Link } from 'react-router-dom';
-import type { Counterpart, LyricLine, Lyrics, Track } from '../../shared/types';
+import type { Counterpart, LyricLine, LyricWord, Lyrics, Track } from '../../shared/types';
 import { api } from '../lib/api';
 import { skipSegments } from '../lib/sponsorblock';
 import { fetchCounterpart, mapTime } from '../player/useAudioVersion';
@@ -340,13 +340,13 @@ function LyricsPanel({ track }: { track: Track }) {
       const fromSelf = song.videoId === track.videoId;
       const shift = (t: number) => mapTime(cp, t, fromSelf);
       return {
-        lines: lines.map((l) => ({ ...l, start: shift(l.start), end: shift(l.end) })),
+        lines: lines.map((l) => shiftLine(l, shift)),
         how: cp.estimated ? '인트로 길이 추정' : 'YouTube Music 시간 대응',
       };
     }
     // 3) 뮤직비디오 앞부분의 '노래가 아닌 구간'(SponsorBlock) 길이만큼 미룬다
     const intro = sponsor.data?.find((g) => g.start < 2 && g.category === 'music_offtopic');
-    const shiftAll = (d: number, how: string) => ({ lines: lines.map((l) => ({ ...l, start: l.start + d, end: l.end + d })), how });
+    const shiftAll = (d: number, how: string) => ({ lines: lines.map((l) => shiftLine(l, (x) => x + d)), how });
     if (intro) return shiftAll(intro.end, '인트로 길이');
     // 4) 노래 길이와 뮤직비디오의 '노래가 끝나는 지점'(아웃트로 시작) 차이 = 인트로 길이로 본다
     const songLen = song?.duration ?? data?.duration;
@@ -407,6 +407,52 @@ function LyricsPanel({ track }: { track: Track }) {
   );
 }
 
+/** 가사 한 줄의 시간(단어 포함)을 함께 옮긴다 */
+function shiftLine(l: LyricLine, fn: (t: number) => number): LyricLine {
+  return {
+    ...l,
+    start: fn(l.start),
+    end: fn(l.end),
+    ...(l.words ? { words: l.words.map((w) => ({ ...w, start: fn(w.start), end: fn(w.end) })) } : {}),
+  };
+}
+
+/**
+ * 단어별 시간이 있는 줄: 노래방처럼 단어마다 부르는 만큼 차오른다.
+ * 재생 위치는 0.25초마다 갱신되므로, 그 사이는 화면 갱신마다 시간을 이어서 계산해 부드럽게 채운다.
+ */
+function ActiveWords({ words }: { words: LyricWord[] }) {
+  const position = usePlayer((s) => s.position);
+  const playing = usePlayer((s) => s.status === 'playing');
+  const base = useRef({ pos: position, at: performance.now() });
+  if (base.current.pos !== position) base.current = { pos: position, at: performance.now() };
+  const [, frame] = useState(0);
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    const loop = () => {
+      frame((n) => n + 1);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+  // 다음 위치 갱신이 늦어져도 너무 앞서 나가지 않게 0.5초까지만 이어서 계산
+  const t = playing ? base.current.pos + Math.min(0.5, (performance.now() - base.current.at) / 1000) : position;
+  return (
+    <>
+      {words.map((w, i) => {
+        const p = Math.min(1, Math.max(0, (t - w.start) / Math.max(0.05, w.end - w.start)));
+        return (
+          <span key={i} className="synced__word" style={{ ['--wp' as string]: `${(p * 100).toFixed(1)}%` }}>
+            {w.text}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 /** 가장 가까운 스크롤 가능한 부모 */
 function scrollParent(el: HTMLElement | null): HTMLElement | null {
   for (let p = el?.parentElement; p; p = p.parentElement) {
@@ -421,7 +467,7 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
   const position = usePlayer((s) => s.position);
   const ref = useRef<HTMLDivElement>(null);
   const userScrollAt = useRef(0);
-  const shifted = useMemo(() => lines.map((l) => ({ ...l, start: l.start + offset, end: l.end + offset })), [lines, offset]);
+  const shifted = useMemo(() => lines.map((l) => shiftLine(l, (x) => x + offset)), [lines, offset]);
 
   // 지금 줄: 시작 시간이 지난 마지막 줄 (살짝 앞당겨서 말하기 전에 강조)
   const t = position + 0.2;
@@ -437,14 +483,7 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
   const gapProgress = inGap && gapEnd !== undefined ? Math.min(1, Math.max(0, (t - gapStart) / Math.max(0.1, gapEnd - gapStart))) : 0;
   const focus = inGap ? (cur ? active + 0.5 : -0.5) : active;
 
-  // 방금 끝난 줄: 한 번 투명해졌다가 비활성 색으로 돌아오는 연출에 쓴다
   const lit = inGap ? -1 : active;
-  const litRef = useRef(lit);
-  const outRef = useRef(-1);
-  if (litRef.current !== lit) {
-    outRef.current = litRef.current;
-    litRef.current = lit;
-  }
 
   // 간주 표시(• • •)는 끝날 때 바로 사라지지 않고 잠깐 머물며 사라진다
   const lastGap = useRef<{ anchor: number; progress: number } | null>(null);
@@ -506,19 +545,18 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
       {gapAnchor === -1 && gap}
       {shifted.map((l, i) => {
         const isActive = i === lit;
-        const isOut = !isActive && i === outRef.current;
         const dist = Math.min(4, Math.abs(i - focus));
         return (
           <Fragment key={i}>
             <p
-              className={`synced__line ${isActive ? 'synced__line--active' : i <= active ? 'synced__line--past' : ''} ${isOut ? 'synced__line--out' : ''}`}
+              className={`synced__line ${isActive ? 'synced__line--active' : i <= active ? 'synced__line--past' : ''} ${isActive && l.words ? 'synced__line--words' : ''}`}
               style={{ ['--d' as string]: dist }}
               onClick={() => {
                 userScrollAt.current = 0;
                 player().seek(Math.max(0, l.start));
               }}
             >
-              {l.text}
+              {isActive && l.words ? <ActiveWords words={l.words} /> : l.text}
             </p>
             {gapAnchor === i && gap}
           </Fragment>
