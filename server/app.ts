@@ -85,6 +85,12 @@ export function createApp(provider: Provider, config: ServerConfig) {
     return c.json(lyrics);
   });
 
+  app.get('/captions/:id', ttl(3600), async (c) => {
+    const id = need(c.req.param('id'), 'id');
+    const lang = c.req.query('lang')?.trim().slice(0, 20) || undefined;
+    return c.json(await cached(`captions:${id}:${lang ?? ''}`, 60 * MIN, () => provider.captions(id, lang)));
+  });
+
   // 앨범 아트 색상 추출용 이미지 중계. 브라우저 캔버스로 픽셀을 읽으려면 CORS 허용이 필요한데
   // Google 이미지 서버는 이를 보장하지 않아서, 허용된 호스트의 이미지만 그대로 전달한다.
   app.get('/image', async (c) => {

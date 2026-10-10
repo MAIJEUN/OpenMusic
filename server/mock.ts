@@ -174,6 +174,25 @@ export const mockProvider: Provider = {
     return { text: LYRICS, source: '출처: OpenMusic Mock Lyrics' };
   },
 
+  async captions(videoId, lang) {
+    await delay();
+    // 끝자리 4: 자막 없음 (끝자리 3은 가사 없이 자막만 있음)
+    if (videoId.endsWith('4')) return null;
+    const tracks = [
+      { code: 'ko', name: '한국어', auto: false },
+      { code: 'en', name: '영어', auto: false },
+      { code: 'ko-auto', name: '한국어 (자동 생성됨)', auto: true },
+    ];
+    const cur = tracks.find((t) => t.code === lang) ?? tracks[0];
+    const texts = LYRICS.split('\n').filter((l) => l.trim() && !l.startsWith('('));
+    const lines = texts.map((text, i) => ({
+      start: 6 + i * 4,
+      end: 6 + i * 4 + 3.6,
+      text: cur.code === 'en' ? `[EN] line ${i + 1}: ${text}` : text,
+    }));
+    return { tracks, lang: cur.code, lines };
+  },
+
 };
 
 /** 목 썸네일: 시드에 따라 그라데이션 SVG 생성 */

@@ -1,4 +1,4 @@
-import type { CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, UpNext } from '../../shared/types';
+import type { Captions, CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, UpNext } from '../../shared/types';
 
 /** 배포 시 Cloudflare Worker 주소 (예: https://openmusic-api.xxx.workers.dev). 비어 있으면 같은 출처의 /api 사용 */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
@@ -63,6 +63,8 @@ export const api = {
     cachedGet<UpNext>(`/upnext?${videoId ? `v=${enc(videoId)}` : ''}${list ? `&list=${enc(list)}` : ''}`),
   search: (q: string, filter: SearchFilter = 'song') => cachedGet<SearchResult>(`/search?q=${enc(q)}&filter=${filter}`),
   lyrics: (videoId: string) => cachedGet<Lyrics | null>(`/lyrics/${enc(videoId)}`, 60 * 60_000),
+  captions: (videoId: string, lang?: string) =>
+    cachedGet<Captions | null>(`/captions/${enc(videoId)}${lang ? `?lang=${enc(lang)}` : ''}`, 60 * 60_000),
 };
 
 /** 재생목록 전체 트랙을 불러온다 (이어받기 토큰을 끝까지 따라감) */
