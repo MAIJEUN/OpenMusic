@@ -108,7 +108,7 @@ export function cleanTitle(title: string, artist?: string): string {
 }
 
 /** 검색해 볼 제목 후보들: "가수 - 제목"이면 제목 쪽, "제목 - 다른 표기"면 양쪽을 모두 시도 */
-function titleCandidates(title: string, artist?: string): string[] {
+export function titleCandidates(title: string, artist?: string): string[] {
   let t = title
     .replace(/[(\[【［（][^)\]】］）]*(official|mv|m\/v|music video|lyric|audio|visualizer|live|teaser|가사|뮤직비디오|공식)[^)\]】］）]*[)\]】］）]/gi, ' ')
     .replace(/\b(official\s*)?(music\s*video|m\/?v)\b/gi, ' ')

@@ -5,7 +5,7 @@
 import { Innertube, YTMusic, YTNodes } from 'youtubei.js';
 import type { ArtistRef, CollectionDetail, Counterpart, ContinuationPage, Lyrics, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
 import { stripVL } from '../shared/links.js';
-import { fetchLyrics, type LyricsQuery } from './lyrics.js';
+import { fetchLyrics, titleCandidates, type LyricsQuery } from './lyrics.js';
 import { findAll } from './json.js';
 import { bestThumb, parseDuration, parseRuns, runsOf, textOf, trackFromListItem, trackFromPanelVideo, type TrackFallback } from './normalize.js';
 import type { Provider } from './provider.js';
@@ -195,15 +195,30 @@ const kindOf = (r: AnyNode): 'song' | 'video' =>
     ? 'song'
     : 'video';
 
+/** 제목 비교용 후보 ("가수 - 제목", 'Ditto' 같은 표기를 모두 풀어서) */
+const normTitles = (t: string, artist?: string) =>
+  titleCandidates(t, artist)
+    .map((x) => x.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ''))
+    .filter(Boolean);
+
 /** 노래 ↔ 뮤직비디오 짝과 두 영상의 시간 대응 (YouTube Music '노래/동영상' 전환과 같은 데이터) */
 async function counterpart(videoId: string): Promise<Counterpart | null> {
-  const res = await (await yt()).actions.execute('/next', { videoId, client: 'YTMUSIC' });
+  const res = await (await yt()).actions.execute('/next', {
+    videoId,
+    playlistId: `RDAMVM${videoId}`,
+    isAudioOnly: true,
+    enablePersistentPlaylistPanel: true,
+    tunerSettingValue: 'AUTOMIX_SETTING_NORMAL',
+    client: 'YTMUSIC',
+  });
+
+  // 1) YouTube Music이 짝과 시간 대응표를 직접 주는 경우
   for (const w of findAll(res.data, 'playlistPanelVideoWrapperRenderer')) {
     const self = w?.primaryRenderer?.playlistPanelVideoRenderer;
     if (self?.videoId !== videoId) continue;
     const cp = w?.counterpart?.[0];
     const other = cp?.counterpartRenderer?.playlistPanelVideoRenderer;
-    if (!other?.videoId) return null;
+    if (!other?.videoId) break;
     const ms = (v: unknown) => Number(v) / 1000;
     const segments = (Array.from(cp?.segmentMap?.segment ?? []) as AnyNode[])
       .map((g) => ({
@@ -223,8 +238,36 @@ async function counterpart(videoId: string): Promise<Counterpart | null> {
       segments,
     };
   }
-  return null;
+
+  // 2) 없으면 같은 제목·가수의 다른 버전을 검색해서 찾는다 (시간 대응표는 없음)
+  const self = findAll(res.data, 'playlistPanelVideoRenderer').find((r) => r?.videoId === videoId);
+  if (!self) return null;
+  const selfKind = kindOf(self);
+  const title = textOf(self.title);
+  const artist = String(self.longBylineText?.runs?.[0]?.text ?? '').trim();
+  const selfDur = parseDuration(textOf(self.lengthText));
+  if (!title) return null;
+  const want = selfKind === 'song' ? 'video' : 'song';
+  const cands = titleCandidates(title, artist);
+  const found = await search(`${cands[cands.length - 1] ?? title} ${artist}`.trim(), want);
+  const keys = normTitles(title, artist);
+  const artistKey = artist.toLowerCase();
+  const matches = found.tracks.filter((t) => {
+    if (t.videoId === videoId) return false;
+    const ks = normTitles(t.title, artistNamesOf(t));
+    const titleOk = ks.some((k) => keys.some((key) => k === key || (k.length > 1 && key.length > 1 && (k.includes(key) || key.includes(k)))));
+    const names = artistNamesOf(t).toLowerCase();
+    const artistOk = !artistKey || names.includes(artistKey) || artistKey.includes(names.split(',')[0].trim());
+    // 노래는 뮤직비디오보다 길지 않다 (인트로·아웃트로가 붙는 쪽이 뮤직비디오)
+    const durOk = !selfDur || !t.duration || (want === 'song' ? t.duration <= selfDur + 5 : t.duration >= selfDur - 5);
+    return titleOk && artistOk && durOk;
+  });
+  if (!matches.length) return null;
+  const best = matches.sort((a, b) => Math.abs((a.duration ?? 0) - (selfDur ?? 0)) - Math.abs((b.duration ?? 0) - (selfDur ?? 0)))[0];
+  return { self: selfKind, other: { videoId: best.videoId, kind: want, duration: best.duration, title: best.title }, segments: [] };
 }
+
+const artistNamesOf = (t: Track) => (t.artists ?? []).map((a) => a.name).join(', ');
 
 async function search(query: string, filter: SearchFilter): Promise<SearchResult> {
   const music = (await yt()).music;
