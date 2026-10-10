@@ -1,5 +1,5 @@
 import type { LyricsQuery } from './lyrics.js';
-import type { CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, UpNext } from '../shared/types.js';
+import type { CollectionDetail, Counterpart, ContinuationPage, Lyrics, SearchFilter, SearchResult, UpNext } from '../shared/types.js';
 
 /** 메타데이터 공급자 (실제 YouTube Music 또는 개발용 목 데이터) */
 export interface Provider {
@@ -9,5 +9,7 @@ export interface Provider {
   upNext(videoId?: string, playlistId?: string): Promise<UpNext>;
   /** 가사. q는 외부 가사 DB(LRCLIB) 검색용 곡 정보 */
   lyrics(videoId: string, q?: LyricsQuery): Promise<Lyrics | null>;
+  /** 노래 ↔ 뮤직비디오 짝 */
+  counterpart(videoId: string): Promise<Counterpart | null>;
   search(query: string, filter: SearchFilter): Promise<SearchResult>;
 }

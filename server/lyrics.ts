@@ -6,6 +6,7 @@
  */
 import type { Innertube } from 'youtubei.js';
 import type { LyricLine, Lyrics } from '../shared/types.js';
+import { findKey } from './json.js';
 import { textOf } from './normalize.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -17,24 +18,6 @@ export interface LyricsQuery {
   album?: string;
   /** 재생 중인 영상 길이(초) */
   duration?: number;
-}
-
-/** 응답 JSON에서 key를 가진 첫 번째 값을 찾는다 (구조가 자주 바뀌어서 경로 대신 이름으로 찾음) */
-function findKey(root: unknown, key: string): any {
-  const stack: unknown[] = [root];
-  let guard = 0;
-  while (stack.length && guard++ < 200_000) {
-    const node = stack.pop();
-    if (!node || typeof node !== 'object') continue;
-    if (Array.isArray(node)) {
-      for (let i = node.length - 1; i >= 0; i--) stack.push(node[i]);
-      continue;
-    }
-    const obj = node as Record<string, unknown>;
-    if (key in obj) return obj[key];
-    for (const v of Object.values(obj)) if (v && typeof v === 'object') stack.push(v);
-  }
-  return undefined;
 }
 
 function finishLines(lines: { start: number; text: string }[], duration?: number): LyricLine[] {

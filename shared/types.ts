@@ -64,6 +64,19 @@ export interface Lyrics {
   source?: string;
   /** 시간 동기화 가사 (있을 때만) */
   synced?: LyricLine[];
+  /** 가사가 맞춰진 음원 길이(초). 재생 중인 영상 길이와 다르면 싱크가 어긋날 수 있다 */
+  duration?: number;
+}
+
+/**
+ * YouTube Music의 노래 ↔ 동영상 짝 (음원 버전 ATV ↔ 뮤직비디오 OMV).
+ * segments는 두 영상의 같은 부분 시간 대응(초): self 시간 → other 시간
+ */
+export interface Counterpart {
+  /** 요청한 영상의 종류 */
+  self: 'song' | 'video';
+  other: { videoId: string; kind: 'song' | 'video'; duration?: number; title?: string };
+  segments: { self: number; other: number; duration: number }[];
 }
 
 /** 시간이 붙은 가사 한 줄 (초) */

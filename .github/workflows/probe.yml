@@ -1,0 +1,18 @@
+# 임시 진단 (확인 후 삭제)
+name: Counterpart probe
+on:
+  push:
+    branches: [claude/festive-goldberg-2ih8re]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/cp-probe.ts V6TEcoNUmc8 pSUydWEqKwE ZmCRFGcON-I _xwOiIMM2a4 2>&1 | grep PROBE
