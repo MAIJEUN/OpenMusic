@@ -297,6 +297,9 @@ function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; 
   );
 }
 
+/** 가사 탭에서 내용이 비어 있다고 확인된 자막 (영상 ID → 자막 ID들) */
+const emptyCaptions = new Map<string, Set<string>>();
+
 /** 동영상 위 YouTube 자막: 꺼져 있으면 켜고, 켜져 있으면 자막 고르기 메뉴 */
 function VideoCaptionsButton() {
   const on = useUi((s) => s.playback.videoCaptions);
@@ -305,8 +308,10 @@ function VideoCaptionsButton() {
   const onClick = (e: MouseEvent) => {
     if (!on) return setPlayback({ videoCaptions: true });
     const { tracks, current } = currentEngine()?.getCaptionTracks?.() ?? { tracks: [] };
+    const s = usePlayer.getState();
+    const empty = [...(emptyCaptions.get(s.queue[s.index]?.track.videoId ?? '') ?? [])];
     const items: MenuState['items'] = tracks.map((t) => ({
-      label: t.name,
+      label: matchCaption(empty, t.id, (x) => x) ? `${t.name} (내용 없음)` : t.name,
       icon: t.id === current ? <MdCheck /> : <span />,
       // 가사 탭의 자막도 같은 자막으로 바뀐다
       onSelect: () => setCaptionTrack(t.id),
@@ -344,6 +349,15 @@ function LyricsPanel({ videoId }: { videoId: string }) {
   const setCaptionTrack = useUi((s) => s.setCaptionTrack);
   const lyrics = useAsync<Lyrics | null>(() => api.lyrics(videoId).catch(() => null), [videoId]);
   const caps = useAsync<Captions | null>(() => loadCaptions(videoId, pref.lang), [videoId, pref.lang]);
+
+  // 내용이 빈 자막은 동영상 자막 메뉴에도 표시한다
+  useEffect(() => {
+    const miss = caps.data?.unavailable;
+    if (!miss) return;
+    const set = emptyCaptions.get(videoId) ?? new Set<string>();
+    set.add(miss);
+    emptyCaptions.set(videoId, set);
+  }, [caps.data, videoId]);
 
   const hasLyrics = !!lyrics.data;
   const hasCaps = !!caps.data?.lines.length;
@@ -399,6 +413,12 @@ function LyricsPanel({ videoId }: { videoId: string }) {
         </>
       ) : caps.data ? (
         <>
+          {caps.data.unavailable && (
+            <p className="lyrics__notice">
+              고른 자막({caps.data.tracks.find((t) => t.code === caps.data!.unavailable)?.name ?? caps.data.unavailable})은 내용이 비어 있어서{' '}
+              {caps.data.tracks.find((t) => t.code === caps.data!.lang)?.name ?? '다른'} 자막을 대신 보여드려요. 영상에 자막이 이미 들어가 있는 경우 이럴 수 있어요.
+            </p>
+          )}
           <SyncedLines key={`${videoId}:${caps.data.lang}`} lines={caps.data.lines} />
           <p className="lyrics__source">
             YouTube 자막 · {caps.data.tracks.find((t) => t.code === caps.data!.lang)?.name ?? caps.data.lang}

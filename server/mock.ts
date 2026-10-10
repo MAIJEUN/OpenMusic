@@ -183,14 +183,17 @@ export const mockProvider: Provider = {
       { code: '.en', name: '영어', auto: false },
       { code: 'a.ko', name: '한국어 (자동 생성됨)', auto: true },
     ];
-    const cur = tracks.find((t) => t.code === lang) ?? tracks[0];
+    let cur = tracks.find((t) => t.code === lang) ?? tracks[0];
+    // 끝자리 2: 영어 자막이 비어 있는 영상 (한국어로 대신 보여줌)
+    const unavailable = videoId.endsWith('2') && cur.code === '.en' ? cur.code : undefined;
+    if (unavailable) cur = tracks[0];
     const texts = LYRICS.split('\n').filter((l) => l.trim() && !l.startsWith('('));
     const lines = texts.map((text, i) => ({
       start: 6 + i * 4,
       end: 6 + i * 4 + 3.6,
       text: cur.code === '.en' ? `[EN] line ${i + 1}: ${text}` : cur.auto ? `(자동) ${text}` : text,
     }));
-    return { tracks, lang: cur.code, lines };
+    return { tracks, lang: cur.code, lines, unavailable };
   },
 
 };

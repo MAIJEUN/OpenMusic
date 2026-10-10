@@ -1645,6 +1645,15 @@ p {
   color: var(--text-3);
   font-size: 13px;
 }
+.lyrics__notice {
+  margin: -4px 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .lyrics__bar {
   display: flex;
   align-items: center;

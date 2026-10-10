@@ -170,29 +170,35 @@ async function fromTranscript(
   videoId: string,
   want: { id?: string; name?: string },
   siteLang: string,
-): Promise<{ tracks: RawTrack[]; lang: string; lines: CaptionLine[] } | null> {
+): Promise<{ tracks: RawTrack[]; lang: string; lines: CaptionLine[]; unavailable?: string } | null> {
   const info = await yt.getInfo(videoId);
-  let tr: AnyNode = await info.getTranscript();
-  const names: string[] = tr.languages;
+  const initial: AnyNode = await info.getTranscript();
+  const names: string[] = initial.languages;
   const tracks = names.map(transcriptTrack);
+  const linesOf = (tr: AnyNode) =>
+    clean(
+      Array.from<AnyNode>(tr?.transcript?.content?.body?.initial_segments ?? [])
+        .filter((s) => s?.start_ms !== undefined)
+        .map((s) => ({ start: Number(s.start_ms) / 1000, end: Number(s.end_ms) / 1000, text: textOf(s.snippet) })),
+    );
+  const codeOf = (name: string) => tracks.find((t) => t.name === name)?.code ?? '';
   const target =
     matchCaption(tracks, want.id, (t) => t.code) ?? tracks.find((t) => t.name === want.name) ?? pickDefault(tracks, null, siteLang);
-  if (target && tr.selectedLanguage !== target.name) {
+
+  if (target && initial.selectedLanguage !== target.name) {
     try {
-      tr = await tr.selectLanguage(target.name);
+      const tr: AnyNode = await initial.selectLanguage(target.name);
+      const lines = linesOf(tr);
+      if (lines.length) return { tracks, lang: codeOf(tr.selectedLanguage) || target.code, lines };
     } catch {
-      /* 바꾸지 못하면 기본 자막 그대로 */
+      /* 바꾸지 못하면 아래에서 기본 자막으로 */
     }
   }
-  const segs: AnyNode[] = Array.from(tr.transcript?.content?.body?.initial_segments ?? []);
-  const lines = clean(
-    segs
-      .filter((s) => s?.start_ms !== undefined)
-      .map((s) => ({ start: Number(s.start_ms) / 1000, end: Number(s.end_ms) / 1000, text: textOf(s.snippet) })),
-  );
+  // 고른 자막을 못 가져오거나 내용이 없으면 패널 기본 자막을 대신 보여준다
+  const lines = linesOf(initial);
   if (!lines.length) return null;
-  const cur = tracks.find((t) => t.name === tr.selectedLanguage) ?? target ?? tracks[0];
-  return { tracks, lang: cur?.code ?? '', lines };
+  const lang = codeOf(initial.selectedLanguage);
+  return { tracks, lang, lines, unavailable: target && target.code !== lang ? target.code : undefined };
 }
 
 /** 목록은 직접 만든 자막을 먼저, 자동 생성 자막을 뒤에 둔다 */
@@ -230,6 +236,16 @@ export async function fetchCaptions(yt: Innertube, videoId: string, lang: string
       want = { id: pick.code, name: pick.name };
       const lines = await fetchTimedText(pick.url);
       if (lines.length) return { tracks: publicTracks(tracks), lang: pick.code, lines };
+      // 고른 자막이 비어 있으면(영상에 자막이 박혀 있어 빈 자막만 올린 경우 등) 다른 자막을 대신 보여준다.
+      // 대신할 자막도 비어 있으면 이 클라이언트 주소가 막힌 것이므로 다음 클라이언트로
+      const alts = [
+        tracks.find((t) => t !== pick && base(t.lc) === base(pick.lc) && t.auto !== pick.auto),
+        pickDefault(tracks, captions, siteLang),
+      ].filter((t, i, a): t is RawTrack => !!t && t !== pick && a.indexOf(t) === i);
+      for (const alt of alts) {
+        const altLines = await fetchTimedText(alt.url);
+        if (altLines.length) return { tracks: publicTracks(tracks), lang: alt.code, lines: altLines, unavailable: pick.code };
+      }
     } catch {
       // 다음 클라이언트로
     }
@@ -238,10 +254,11 @@ export async function fetchCaptions(yt: Innertube, videoId: string, lang: string
   try {
     const res = await fromTranscript(yt, videoId, want, siteLang);
     if (!res) return null;
-    if (!known.length) return { tracks: publicTracks(res.tracks), lang: res.lang, lines: res.lines };
+    if (!known.length) return { tracks: publicTracks(res.tracks), lang: res.lang, lines: res.lines, unavailable: res.unavailable };
     // 언어 목록은 플레이어 목록을 쓰고, 지금 자막은 같은 언어·종류로 맞춘다
     const cur = matchCaption(known, res.lang, (t) => t.code);
-    return { tracks: publicTracks(known), lang: cur?.code ?? res.lang, lines: res.lines };
+    const miss = res.unavailable ? (matchCaption(known, res.unavailable, (t) => t.code)?.code ?? res.unavailable) : undefined;
+    return { tracks: publicTracks(known), lang: cur?.code ?? res.lang, lines: res.lines, unavailable: miss };
   } catch {
     return null;
   }
