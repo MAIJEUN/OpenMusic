@@ -229,6 +229,7 @@ async function counterpart(videoId: string): Promise<Counterpart | null> {
       .filter((g) => Number.isFinite(g.self) && Number.isFinite(g.other) && Number.isFinite(g.duration));
     return {
       self: kindOf(self),
+      selfDuration: parseDuration(textOf(self.lengthText)),
       other: {
         videoId: String(other.videoId),
         kind: kindOf(other),
@@ -264,7 +265,12 @@ async function counterpart(videoId: string): Promise<Counterpart | null> {
   });
   if (!matches.length) return null;
   const best = matches.sort((a, b) => Math.abs((a.duration ?? 0) - (selfDur ?? 0)) - Math.abs((b.duration ?? 0) - (selfDur ?? 0)))[0];
-  return { self: selfKind, other: { videoId: best.videoId, kind: want, duration: best.duration, title: best.title }, segments: [] };
+  return {
+    self: selfKind,
+    selfDuration: selfDur,
+    other: { videoId: best.videoId, kind: want, duration: best.duration, title: best.title },
+    segments: [],
+  };
 }
 
 const artistNamesOf = (t: Track) => (t.artists ?? []).map((a) => a.name).join(', ');

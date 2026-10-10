@@ -2,7 +2,7 @@ import { DndContext, MouseSensor, TouchSensor, closestCenter, useSensor, useSens
 import { restrictToVerticalAxis } from './dndModifiers';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useAsync } from '../hooks/useAsync';
 import { MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
 import { Link } from 'react-router-dom';
@@ -125,7 +125,7 @@ export function NowPlaying() {
                   </button>
                 ))}
               </div>
-              <div className="np__panel">
+              <div className={`np__panel ${tab === 'lyrics' ? 'np__panel--lyrics' : ''}`}>
                 {tab === 'upnext' && <UpNextPanel onNavigate={() => setOpen(false)} />}
                 {tab === 'lyrics' && <LyricsPanel key={t.videoId} track={t} />}
               </div>
@@ -339,7 +339,10 @@ function LyricsPanel({ track }: { track: Track }) {
     if (cp && song && cp.segments.length) {
       const fromSelf = song.videoId === track.videoId;
       const shift = (t: number) => mapTime(cp, t, fromSelf);
-      return { lines: lines.map((l) => ({ ...l, start: shift(l.start), end: shift(l.end) })), how: 'YouTube Music 시간 대응' };
+      return {
+        lines: lines.map((l) => ({ ...l, start: shift(l.start), end: shift(l.end) })),
+        how: cp.estimated ? '인트로 길이 추정' : 'YouTube Music 시간 대응',
+      };
     }
     // 3) 뮤직비디오 앞부분의 '노래가 아닌 구간'(SponsorBlock) 길이만큼 미룬다
     const intro = sponsor.data?.find((g) => g.start < 2 && g.category === 'music_offtopic');
@@ -418,11 +421,22 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
   const position = usePlayer((s) => s.position);
   const ref = useRef<HTMLDivElement>(null);
   const userScrollAt = useRef(0);
-  const starts = useMemo(() => lines.map((l) => l.start), [lines]);
+  const shifted = useMemo(() => lines.map((l) => ({ ...l, start: l.start + offset, end: l.end + offset })), [lines, offset]);
 
   // 지금 줄: 시작 시간이 지난 마지막 줄 (살짝 앞당겨서 말하기 전에 강조)
+  const t = position + 0.2;
   let active = -1;
-  for (let i = 0; i < starts.length && starts[i] + offset <= position + 0.2; i++) active = i;
+  for (let i = 0; i < shifted.length && shifted[i].start <= t; i++) active = i;
+  const cur = shifted[active];
+  const next = shifted[active + 1];
+  // 간주: 지금 줄이 끝났고 다음 줄까지 2초 넘게 남았으면 • • • 로 표시
+  const lineEnd = cur ? Math.min(cur.end, next?.start ?? cur.end) : 0;
+  const inGap = cur ? t > lineEnd + 0.3 && !!next && next.start - t > 2 : shifted.length > 0 && shifted[0].start - t > 2;
+  const gapProgress = inGap
+    ? Math.min(1, Math.max(0, (t - (cur ? lineEnd : 0)) / Math.max(0.1, (next?.start ?? shifted[0].start) - (cur ? lineEnd : 0))))
+    : 0;
+  const focus = inGap ? (cur ? active + 0.5 : -0.5) : active;
+  const lineProgress = cur && !inGap ? Math.min(1, Math.max(0, (t - cur.start) / Math.max(0.3, lineEnd - cur.start))) : 0;
 
   // 사용자가 직접 스크롤하면 4초 동안은 자동 스크롤을 멈춘다
   useEffect(() => {
@@ -439,30 +453,47 @@ function SyncedLines({ lines, offset = 0 }: { lines: LyricLine[]; offset?: numbe
   }, []);
 
   useEffect(() => {
-    if (active < 0 || performance.now() - userScrollAt.current < 4000) return;
-    const line = ref.current?.children[active] as HTMLElement | undefined;
+    if (performance.now() - userScrollAt.current < 4000) return;
+    const target = ref.current?.querySelector<HTMLElement>('.synced__line--active, .synced__gap');
     const parent = scrollParent(ref.current);
-    if (!line || !parent) return;
+    if (!target || !parent) return;
     const pr = parent.getBoundingClientRect();
-    const lr = line.getBoundingClientRect();
-    const top = parent.scrollTop + (lr.top - pr.top) - parent.clientHeight / 2 + lr.height / 2;
+    const lr = target.getBoundingClientRect();
+    // 지금 줄이 화면의 위쪽 40% 지점에 오도록 (아래에 다음 가사가 더 많이 보이게)
+    const top = parent.scrollTop + (lr.top - pr.top) - parent.clientHeight * 0.4 + lr.height / 2;
     parent.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-  }, [active]);
+  }, [focus]);
+
+  const gap = (
+    <div className="synced__gap" aria-hidden style={{ ['--gp' as string]: gapProgress }}>
+      <span />
+      <span />
+      <span />
+    </div>
+  );
 
   return (
     <div ref={ref} className="synced">
-      {lines.map((l, i) => (
-        <p
-          key={i}
-          className={`synced__line ${i === active ? 'synced__line--active' : i < active ? 'synced__line--past' : ''}`}
-          onClick={() => {
-            userScrollAt.current = 0;
-            player().seek(Math.max(0, l.start + offset));
-          }}
-        >
-          {l.text}
-        </p>
-      ))}
+      {inGap && !cur && gap}
+      {shifted.map((l, i) => {
+        const isActive = i === active && !inGap;
+        const dist = Math.min(4, Math.abs(i - focus));
+        return (
+          <Fragment key={i}>
+            <p
+              className={`synced__line ${isActive ? 'synced__line--active' : i <= active ? 'synced__line--past' : ''}`}
+              style={{ ['--d' as string]: dist, ...(isActive ? { ['--lp' as string]: `${Math.round(lineProgress * 100)}%` } : {}) }}
+              onClick={() => {
+                userScrollAt.current = 0;
+                player().seek(Math.max(0, l.start));
+              }}
+            >
+              {l.text}
+            </p>
+            {inGap && i === active && gap}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

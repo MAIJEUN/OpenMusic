@@ -75,6 +75,10 @@ export interface Lyrics {
 export interface Counterpart {
   /** 요청한 영상의 종류 */
   self: 'song' | 'video';
+  /** 요청한 영상 길이(초) */
+  selfDuration?: number;
+  /** segments가 YouTube Music 데이터가 아니라 인트로 길이로 추정한 값인지 (브라우저에서 채움) */
+  estimated?: boolean;
   other: { videoId: string; kind: 'song' | 'video'; duration?: number; title?: string };
   segments: { self: number; other: number; duration: number }[];
 }
