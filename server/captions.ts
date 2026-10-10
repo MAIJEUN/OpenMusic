@@ -13,7 +13,11 @@ type AnyNode = any;
 
 interface RawTrack extends CaptionTrack {
   url: string;
+  /** 언어 코드 (예: ko, en-US) */
+  lc: string;
 }
+
+const base = (lc: string) => lc.split('-')[0].toLowerCase();
 
 const CLIENTS = ['ANDROID', 'IOS', 'WEB'] as const;
 
@@ -94,14 +98,23 @@ async function fetchTimedText(url: string): Promise<CaptionLine[]> {
   return body.startsWith('{') ? parseJson3(body) : parseXml(body);
 }
 
-/** 기본 언어: YouTube 기본 자막 → 사이트 언어의 직접 만든 자막 → 첫 번째 직접 만든 자막 → 자동 생성 자막 */
+/**
+ * 기본 자막은 직접 만든 자막을 우선한다 (자동 생성 자막은 직접 만든 자막이 없을 때만).
+ * YouTube 기본 자막 → 노래 원어(자동 생성 자막의 언어)로 된 자막 → 사이트 언어 자막 → 첫 번째 자막
+ */
 function pickDefault(tracks: RawTrack[], captions: AnyNode, siteLang: string): RawTrack | undefined {
   const audio = captions?.audio_tracks?.[captions?.default_audio_track_index ?? 0];
   const idx = audio?.default_caption_track_index;
   const yd = typeof idx === 'number' ? tracks[idx] : undefined;
   if (yd && !yd.auto) return yd;
   const manual = tracks.filter((t) => !t.auto);
-  return manual.find((t) => t.code.split('-')[0] === siteLang) ?? manual[0] ?? tracks[0];
+  const spoken = tracks.find((t) => t.auto)?.lc;
+  return (
+    (spoken && manual.find((t) => base(t.lc) === base(spoken))) ||
+    manual.find((t) => base(t.lc) === siteLang) ||
+    manual[0] ||
+    tracks[0]
+  );
 }
 
 function choose(tracks: RawTrack[], lang: string | undefined, captions: AnyNode, siteLang: string) {
@@ -125,6 +138,11 @@ async function fromTranscript(yt: Innertube, videoId: string, wantName?: string)
   return { tracks, lang: tr.selectedLanguage || names[0] || '', lines };
 }
 
+/** 목록은 직접 만든 자막을 먼저, 자동 생성 자막을 뒤에 둔다 */
+function publicTracks(tracks: RawTrack[]): CaptionTrack[] {
+  return [...tracks.filter((t) => !t.auto), ...tracks.filter((t) => t.auto)].map(({ code, name, auto }) => ({ code, name, auto }));
+}
+
 export async function fetchCaptions(yt: Innertube, videoId: string, lang: string | undefined, siteLang: string): Promise<Captions | null> {
   let known: RawTrack[] = [];
   let wantName: string | undefined;
@@ -141,14 +159,20 @@ export async function fetchCaptions(yt: Innertube, videoId: string, lang: string
       }
       const tracks: RawTrack[] = raw
         .filter((t) => t?.base_url && t?.language_code)
-        .map((t) => ({ code: String(t.language_code), name: textOf(t.name) || String(t.language_code), auto: t.kind === 'asr', url: String(t.base_url) }));
+        .map((t, i) => {
+          const lc = String(t.language_code);
+          const auto = t.kind === 'asr';
+          // vss_id(.ko, a.ko, .en.이름)는 자막마다 달라서 같은 언어의 직접 만든/자동 자막을 구분할 수 있다
+          const code = String(t.vss_id || `${auto ? 'a' : ''}.${lc}${i}`);
+          return { code, lc, name: textOf(t.name) || lc, auto, url: String(t.base_url) };
+        });
       if (!tracks.length) continue;
       known = tracks;
       const pick = choose(tracks, lang, captions, siteLang);
       if (!pick) continue;
       wantName = pick.name;
       const lines = await fetchTimedText(pick.url);
-      if (lines.length) return { tracks: tracks.map(({ url: _url, ...t }) => t), lang: pick.code, lines };
+      if (lines.length) return { tracks: publicTracks(tracks), lang: pick.code, lines };
     } catch {
       // 다음 클라이언트로
     }
@@ -160,7 +184,7 @@ export async function fetchCaptions(yt: Innertube, videoId: string, lang: string
     if (!known.length) return res;
     // 언어 목록은 코드가 있는 플레이어 목록을 쓰고, 지금 언어는 이름으로 맞춘다
     const cur = known.find((t) => t.name === res.lang);
-    return { tracks: known.map(({ url: _url, ...t }) => t), lang: cur?.code ?? res.lang, lines: res.lines };
+    return { tracks: publicTracks(known), lang: cur?.code ?? res.lang, lines: res.lines };
   } catch {
     return null;
   }

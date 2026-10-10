@@ -4,13 +4,13 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { useAsync } from '../hooks/useAsync';
-import { MdClosedCaption, MdClosedCaptionDisabled, MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
+import { MdCheck, MdClosedCaption, MdClosedCaptionDisabled, MdClosedCaptionOff, MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
 import { Link } from 'react-router-dom';
 import type { CaptionLine, Captions, Lyrics } from '../../shared/types';
 import { api } from '../lib/api';
 import { artistNames, formatTime } from '../lib/format';
-import { player, usePlayer, type QueueItem } from '../store/player';
-import { useUi, type NowPlayingTab } from '../store/ui';
+import { currentEngine, player, usePlayer, type QueueItem } from '../store/player';
+import { useUi, type MenuState, type NowPlayingTab } from '../store/ui';
 import { Equalizer } from './Equalizer';
 import { IconButton } from './IconButton';
 import { openMenuFromEvent, saveTracksTo, trackMenuItems } from './menus';
@@ -296,16 +296,28 @@ function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; 
   );
 }
 
-/** 동영상 위 YouTube 자막 켜기/끄기 */
+/** 동영상 위 YouTube 자막: 꺼져 있으면 켜고, 켜져 있으면 자막 고르기 메뉴 */
 function VideoCaptionsButton() {
   const on = useUi((s) => s.playback.videoCaptions);
   const setPlayback = useUi((s) => s.setPlayback);
+  const onClick = (e: MouseEvent) => {
+    if (!on) return setPlayback({ videoCaptions: true });
+    const { tracks, current } = currentEngine()?.getCaptionTracks?.() ?? { tracks: [] };
+    const items: MenuState['items'] = tracks.map((t) => ({
+      label: t.name,
+      icon: t.id === current ? <MdCheck /> : <span />,
+      onSelect: () => setPlayback({ videoCaptionTrack: t.id }),
+    }));
+    if (!items.length) items.push({ label: '자막 목록을 불러오는 중이에요', icon: <span />, onSelect: () => {} });
+    items.push('divider', { label: '자막 끄기', icon: <MdClosedCaptionOff />, onSelect: () => setPlayback({ videoCaptions: false }) });
+    openMenuFromEvent(e, items);
+  };
   return (
     <IconButton
-      label={on ? '동영상 자막 끄기' : '동영상 자막 켜기'}
+      label={on ? '동영상 자막 선택' : '동영상 자막 켜기'}
       className="icon-btn--toggle np__cc"
       active={on}
-      onClick={() => setPlayback({ videoCaptions: !on })}
+      onClick={onClick}
     >
       {on ? <MdClosedCaption /> : <MdClosedCaptionDisabled />}
     </IconButton>

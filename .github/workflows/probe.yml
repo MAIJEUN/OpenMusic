@@ -15,4 +15,4 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx tsx scripts/captions-probe.ts dQw4w9WgXcQ gdZLi9oWNZg 9bZkp7q19f0
+      - run: npx tsx scripts/captions-probe.ts dQw4w9WgXcQ a.en .ja 2>&1 | grep PROBE

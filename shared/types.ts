@@ -66,7 +66,7 @@ export interface Lyrics {
 
 /** YouTube 자막 언어 */
 export interface CaptionTrack {
-  /** 언어 코드 (예: ko, en, ja) */
+  /** 자막 ID. 같은 언어라도 직접 만든 자막(.ko)과 자동 생성 자막(a.ko)은 다르다 */
   code: string;
   /** 표시 이름 (예: 한국어, 영어(자동 생성됨)) */
   name: string;
@@ -83,7 +83,7 @@ export interface CaptionLine {
 
 export interface Captions {
   tracks: CaptionTrack[];
-  /** 지금 내용의 언어 코드 */
+  /** 지금 내용의 자막 ID */
   lang: string;
   lines: CaptionLine[];
 }

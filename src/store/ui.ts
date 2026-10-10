@@ -38,6 +38,8 @@ export interface PlaybackSettings {
   silenceSeconds: number;
   /** 동영상 위에 YouTube 자막 표시 */
   videoCaptions: boolean;
+  /** 동영상 자막으로 고른 자막 ID (.ko, a.ko 등). 없으면 직접 만든 자막을 우선 */
+  videoCaptionTrack?: string;
 }
 
 /** 가사 탭: 가사와 YouTube 자막 중 무엇을 먼저 보여줄지, 자막 언어 */
