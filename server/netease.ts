@@ -51,7 +51,8 @@ export function parseYrc(yrc: string): LyricLine[] {
 const norm = (s: string) => s.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
 
 async function search(q: string): Promise<NeteaseSong[]> {
-  const url = `${BASE}/api/search/get/web?${new URLSearchParams({ s: q, type: '1', offset: '0', limit: '15' })}`;
+  // /api/search/get/web은 암호화된 응답을 주므로 PC 클라이언트용 검색을 쓴다
+  const url = `${BASE}/api/cloudsearch/pc?${new URLSearchParams({ s: q, type: '1', offset: '0', limit: '15' })}`;
   const res = await fetch(url, { headers: HEADERS });
   if (!res.ok) return [];
   const data = (await res.json()) as { result?: { songs?: NeteaseSong[] } };
@@ -83,10 +84,11 @@ export async function neteaseWordLyrics(q: NeteaseQuery): Promise<{ lines: Lyric
     .filter((x) => x.ok)
     .sort((a, b) => a.diff - b.diff);
 
-  for (const { s, dur } of scored.slice(0, 2)) {
-    const res = await fetch(`${BASE}/api/song/lyric/v1?${new URLSearchParams({ id: String(s.id), lv: '0', yv: '0', tv: '0', rv: '0', kv: '0', cp: 'false' })}`, {
-      headers: HEADERS,
-    });
+  // 같은 곡이 여러 번 올라와 있는 경우가 많아서(앨범·싱글) 앞의 몇 개를 차례로 확인한다
+  for (const { s, dur } of scored.slice(0, 3)) {
+    const v = '-1';
+    const params = new URLSearchParams({ id: String(s.id), cp: 'false', lv: v, kv: v, tv: v, rv: v, yv: v, ytv: v, yrv: v });
+    const res = await fetch(`${BASE}/api/song/lyric/v1?${params}`, { headers: HEADERS });
     if (!res.ok) continue;
     const data = (await res.json()) as { yrc?: { lyric?: string } };
     const lines = data.yrc?.lyric ? parseYrc(data.yrc.lyric) : [];
