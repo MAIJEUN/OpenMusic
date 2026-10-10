@@ -65,7 +65,7 @@ export const api = {
   counterpart: (videoId: string) => cachedGet<Counterpart | null>(`/counterpart/${enc(videoId)}`, 24 * 60 * 60_000),
   /** 가사 (시간 동기화 가사가 있으면 synced 포함). 외부 가사 DB 검색용으로 곡 정보를 함께 보낸다 */
   lyrics: (videoId: string, q: { title?: string; artist?: string; album?: string; duration?: number } = {}) => {
-    const p = new URLSearchParams({ v: '2' });
+    const p = new URLSearchParams({ v: '3' });
     if (q.title) p.set('title', q.title);
     if (q.artist) p.set('artist', q.artist);
     if (q.album) p.set('album', q.album);
