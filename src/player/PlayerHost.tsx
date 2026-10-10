@@ -89,10 +89,11 @@ export function PlayerHost() {
 
   // 동영상 위 YouTube 자막 표시 설정
   const videoCaptions = useUi((s) => s.playback.videoCaptions);
+  const videoCaptionTrack = useUi((s) => s.playback.videoCaptionTrack);
   const [engineReady, setEngineReady] = useState(false);
   useEffect(() => {
-    if (engineReady) engineRef.current?.setCaptions?.(videoCaptions);
-  }, [videoCaptions, engineReady]);
+    if (engineReady) engineRef.current?.setCaptions?.(videoCaptions, videoCaptionTrack);
+  }, [videoCaptions, videoCaptionTrack, engineReady]);
 
   useMediaSession();
   useDocumentTitle();

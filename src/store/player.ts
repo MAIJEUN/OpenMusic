@@ -501,3 +501,5 @@ usePlayer.subscribe((s) => {
 });
 
 export const player = () => usePlayer.getState();
+/** 지금 연결된 재생 엔진 (자막 목록 조회 등) */
+export const currentEngine = () => engine;
