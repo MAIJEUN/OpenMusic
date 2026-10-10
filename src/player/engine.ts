@@ -1,4 +1,4 @@
-import { matchCaption } from '../lib/captionMatch';
+import { matchCaption } from '../../shared/captionMatch';
 
 /**
  * 실제 재생을 담당하는 엔진.

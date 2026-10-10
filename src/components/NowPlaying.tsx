@@ -8,7 +8,7 @@ import { MdCheck, MdClosedCaption, MdClosedCaptionDisabled, MdClosedCaptionOff, 
 import { Link } from 'react-router-dom';
 import type { CaptionLine, Captions, Lyrics } from '../../shared/types';
 import { api } from '../lib/api';
-import { matchCaption } from '../lib/captionMatch';
+import { matchCaption } from '../../shared/captionMatch';
 import { artistNames, formatTime } from '../lib/format';
 import { currentEngine, player, usePlayer, type QueueItem } from '../store/player';
 import { useUi, type MenuState, type NowPlayingTab } from '../store/ui';

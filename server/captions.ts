@@ -6,6 +6,7 @@
  */
 import type { Innertube } from 'youtubei.js';
 import type { CaptionLine, CaptionTrack, Captions } from '../shared/types.js';
+import { matchCaption } from '../shared/captionMatch.js';
 import { textOf } from './normalize.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -42,8 +43,13 @@ function isNoise(text: string): boolean {
 function clean(lines: CaptionLine[]): CaptionLine[] {
   const out: CaptionLine[] = [];
   for (const l of lines) {
-    // 줄 앞뒤의 음표(♪ 가사 ♪)는 떼어낸다
-    const text = l.text.replace(/\r/g, '').replace(/[ \t]+/g, ' ').trim().replace(/^[♪♫♬\s]+|[♪♫♬\s]+$/g, '');
+    // 자동 자막 중간의 [音楽]·[음악] 같은 효과음 표기와 줄 앞뒤의 음표(♪ 가사 ♪)는 떼어낸다
+    const text = l.text
+      .replace(/\r/g, '')
+      .replace(/\[[^\]\n]{1,15}\]/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .trim()
+      .replace(/^[♪♫♬\s]+|[♪♫♬\s]+$/g, '');
     if (isNoise(text)) continue;
     const prev = out[out.length - 1];
     // 자동 자막은 같은 문장이 겹쳐 이어지는 경우가 있어 바로 앞 줄과 같으면 합친다
@@ -119,14 +125,65 @@ function pickDefault(tracks: RawTrack[], captions: AnyNode, siteLang: string): R
 }
 
 function choose(tracks: RawTrack[], lang: string | undefined, captions: AnyNode, siteLang: string) {
-  return (lang && (tracks.find((t) => t.code === lang) ?? tracks.find((t) => t.name === lang))) || pickDefault(tracks, captions, siteLang);
+  return matchCaption(tracks, lang, (t) => t.code) ?? tracks.find((t) => t.name === lang) ?? pickDefault(tracks, captions, siteLang);
 }
 
-/** '스크립트 표시' 패널로 가져오기 (언어는 표시 이름으로 고른다) */
-async function fromTranscript(yt: Innertube, videoId: string, wantName?: string): Promise<{ tracks: CaptionTrack[]; lang: string; lines: CaptionLine[] } | null> {
+/* '스크립트 표시' 패널은 언어를 이름(예: 일본어, 일본어 (자동 생성됨))으로만 알려 주므로 이름 → 언어 코드로 되돌린다 */
+const LANG_CODES = (
+  'af am ar az be bg bn bs ca cs cy da de el en eo es et eu fa fi fil fr ga gl gu he hi hr hu hy id is it ja jv ka kk km kn ko ky ' +
+  'lo lt lv mk ml mn mr ms my ne nl no pa pl ps pt ro ru si sk sl sq sr sv sw ta te th tl tr uk ur uz vi yue zh zu ' +
+  'de-DE en-US en-GB es-419 es-ES es-MX fr-FR fr-CA pt-BR pt-PT zh-CN zh-TW zh-HK zh-Hans zh-Hant'
+).split(' ');
+let nameToCode: Map<string, string> | null = null;
+function codeOfName(name: string): string | undefined {
+  if (!nameToCode) {
+    nameToCode = new Map();
+    try {
+      for (const loc of ['ko', 'en']) {
+        const dn = new Intl.DisplayNames([loc], { type: 'language' });
+        for (const c of LANG_CODES) {
+          const n = dn.of(c);
+          if (n && !nameToCode.has(n.toLowerCase())) nameToCode.set(n.toLowerCase(), c);
+        }
+      }
+    } catch {
+      /* Intl.DisplayNames 미지원 환경 */
+    }
+  }
+  const norm = (n: string) => n.toLowerCase().replace(/\s+/g, '');
+  const key = name.toLowerCase();
+  return nameToCode.get(key) ?? [...nameToCode].find(([n]) => norm(n) === norm(name))?.[1];
+}
+
+const AUTO_SUFFIX = /\s*\((자동 생성됨|자동 생성|auto-generated)\)\s*$/i;
+
+export function transcriptTrack(name: string): RawTrack {
+  const auto = AUTO_SUFFIX.test(name);
+  const baseName = name.replace(AUTO_SUFFIX, '').trim();
+  const lc = codeOfName(baseName) ?? baseName;
+  return { code: `${auto ? 'a' : ''}.${lc}`, lc, name, auto, url: '' };
+}
+
+/** '스크립트 표시' 패널로 가져오기. 원하는 자막(ID 또는 이름)이 있으면 그 언어로 바꾼다 */
+async function fromTranscript(
+  yt: Innertube,
+  videoId: string,
+  want: { id?: string; name?: string },
+  siteLang: string,
+): Promise<{ tracks: RawTrack[]; lang: string; lines: CaptionLine[] } | null> {
   const info = await yt.getInfo(videoId);
   let tr: AnyNode = await info.getTranscript();
-  if (wantName && tr.selectedLanguage !== wantName && tr.languages.includes(wantName)) tr = await tr.selectLanguage(wantName);
+  const names: string[] = tr.languages;
+  const tracks = names.map(transcriptTrack);
+  const target =
+    matchCaption(tracks, want.id, (t) => t.code) ?? tracks.find((t) => t.name === want.name) ?? pickDefault(tracks, null, siteLang);
+  if (target && tr.selectedLanguage !== target.name) {
+    try {
+      tr = await tr.selectLanguage(target.name);
+    } catch {
+      /* 바꾸지 못하면 기본 자막 그대로 */
+    }
+  }
   const segs: AnyNode[] = Array.from(tr.transcript?.content?.body?.initial_segments ?? []);
   const lines = clean(
     segs
@@ -134,9 +191,8 @@ async function fromTranscript(yt: Innertube, videoId: string, wantName?: string)
       .map((s) => ({ start: Number(s.start_ms) / 1000, end: Number(s.end_ms) / 1000, text: textOf(s.snippet) })),
   );
   if (!lines.length) return null;
-  const names: string[] = tr.languages;
-  const tracks = names.map((n) => ({ code: n, name: n, auto: /자동|auto/i.test(n) }));
-  return { tracks, lang: tr.selectedLanguage || names[0] || '', lines };
+  const cur = tracks.find((t) => t.name === tr.selectedLanguage) ?? target ?? tracks[0];
+  return { tracks, lang: cur?.code ?? '', lines };
 }
 
 /** 목록은 직접 만든 자막을 먼저, 자동 생성 자막을 뒤에 둔다 */
@@ -146,7 +202,7 @@ function publicTracks(tracks: RawTrack[]): CaptionTrack[] {
 
 export async function fetchCaptions(yt: Innertube, videoId: string, lang: string | undefined, siteLang: string): Promise<Captions | null> {
   let known: RawTrack[] = [];
-  let wantName: string | undefined;
+  let want: { id?: string; name?: string } = { id: lang };
 
   for (const client of CLIENTS) {
     try {
@@ -171,7 +227,7 @@ export async function fetchCaptions(yt: Innertube, videoId: string, lang: string
       known = tracks;
       const pick = choose(tracks, lang, captions, siteLang);
       if (!pick) continue;
-      wantName = pick.name;
+      want = { id: pick.code, name: pick.name };
       const lines = await fetchTimedText(pick.url);
       if (lines.length) return { tracks: publicTracks(tracks), lang: pick.code, lines };
     } catch {
@@ -180,11 +236,11 @@ export async function fetchCaptions(yt: Innertube, videoId: string, lang: string
   }
 
   try {
-    const res = await fromTranscript(yt, videoId, wantName);
+    const res = await fromTranscript(yt, videoId, want, siteLang);
     if (!res) return null;
-    if (!known.length) return res;
-    // 언어 목록은 코드가 있는 플레이어 목록을 쓰고, 지금 언어는 이름으로 맞춘다
-    const cur = known.find((t) => t.name === res.lang);
+    if (!known.length) return { tracks: publicTracks(res.tracks), lang: res.lang, lines: res.lines };
+    // 언어 목록은 플레이어 목록을 쓰고, 지금 자막은 같은 언어·종류로 맞춘다
+    const cur = matchCaption(known, res.lang, (t) => t.code);
     return { tracks: publicTracks(known), lang: cur?.code ?? res.lang, lines: res.lines };
   } catch {
     return null;
