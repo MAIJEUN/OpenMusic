@@ -1,5 +1,3 @@
-import { matchCaption } from '../../shared/captionMatch';
-
 /**
  * 실제 재생을 담당하는 엔진.
  * - YouTubeEngine: YouTube IFrame Player API (정식 임베드 플레이어)
@@ -32,39 +30,13 @@ export interface Engine {
   getDuration(): number;
   /** 다음 곡으로 크로스페이드 (지원하는 엔진만) */
   crossfade?(videoId: string, seconds: number, opts?: Omit<LoadOptions, 'autoplay'>): void;
-  /** 동영상 위 YouTube 자막 표시 여부와 고른 자막 ID (지원하는 엔진만) */
-  setCaptions?(on: boolean, trackId?: string): void;
-  /** 지금 영상에서 고를 수 있는 자막 (자막이 켜져 있을 때만 채워짐) */
-  getCaptionTracks?(): { tracks: VideoCaptionTrack[]; current?: string };
-}
-
-export interface VideoCaptionTrack {
-  id: string;
-  name: string;
-  auto: boolean;
 }
 
 /* IFrame 플레이어의 공개되지 않은 자막 API (모듈 'captions' 또는 'cc') */
-interface YtTrack {
-  languageCode: string;
-  languageName?: string;
-  displayName?: string;
-  kind?: string;
-  vss_id?: string;
-}
 interface YtCaptionsApi {
   getOptions?: () => string[];
-  loadModule?: (m: string) => void;
   unloadModule?: (m: string) => void;
-  getOption?: (m: string, k: string) => unknown;
-  setOption?: (m: string, k: string, v: unknown) => void;
 }
-const captionsModule = (p: YtCaptionsApi) => {
-  const loaded = p.getOptions?.() ?? [];
-  return loaded.includes('captions') ? 'captions' : loaded.includes('cc') ? 'cc' : null;
-};
-/** 같은 언어라도 직접 만든 자막(.ko)과 자동 생성 자막(a.ko)을 구분하는 ID */
-const trackId = (t: YtTrack) => t.vss_id || `${t.kind === 'asr' ? 'a' : ''}.${t.languageCode}`;
 
 const noopEvents: EngineEvents = { onState: () => {}, onError: () => {}, onFatal: () => {} };
 
@@ -106,11 +78,6 @@ export class YouTubeEngine implements Engine {
   private pending: { videoId: string; opts: LoadOptions } | null = null;
   private volume = 100;
   private muted = false;
-  private captions = false;
-  private captionTrack: string | undefined;
-  /** 이 영상에서 마지막으로 적용한 자막 (플레이어가 돌려주는 현재 자막 값은 늦게 바뀌는 경우가 있다) */
-  private appliedTrack: string | undefined;
-  private captionRetries = 0;
 
   constructor(private events: EngineEvents = noopEvents) {}
 
@@ -147,8 +114,8 @@ export class YouTubeEngine implements Engine {
               }
             },
             onStateChange: (e) => this.events.onState(mapState(e.data)),
-            // 자막 모듈은 영상마다 새로 불려오므로 그때마다 설정을 다시 적용한다
-            onApiChange: () => this.applyCaptions(),
+            // 자막 모듈은 영상마다 새로 불려오므로 그때마다 다시 내린다
+            onApiChange: () => this.hideCaptions(),
             onError: (e) => this.events.onError(Number(e.data)),
           },
         });
@@ -163,74 +130,15 @@ export class YouTubeEngine implements Engine {
     else this.player.unMute();
   }
 
-  /**
-   * 업로더가 '기본 자막'을 켜 둔 영상은 임베드 플레이어에서도 자막이 저절로 나온다.
-   * 자막을 끈 상태면 자막 모듈을 내리고, 켠 상태면 모듈을 올려 고른 자막(없으면 직접 만든 자막)을 표시한다.
-   */
-  private applyCaptions() {
+  /** 업로더가 '기본 자막'을 켜 둔 영상은 임베드 플레이어에서도 자막이 저절로 나오므로 자막 모듈을 내린다 */
+  private hideCaptions() {
     const p = this.player as unknown as YtCaptionsApi | null;
     if (!p || !this.ready) return;
     try {
-      const mod = captionsModule(p);
-      if (!this.captions) {
-        this.appliedTrack = undefined;
-        if (mod) p.unloadModule?.(mod);
-        return;
-      }
-      if (!mod) {
-        this.appliedTrack = undefined;
-        p.loadModule?.('captions');
-        return;
-      }
-      const list = (p.getOption?.(mod, 'tracklist') as YtTrack[] | undefined) ?? [];
-      if (!list.length) {
-        // 자막 목록이 늦게 채워지는 경우가 있어 잠시 뒤 다시 확인
-        if (this.captionRetries++ < 5) setTimeout(() => this.applyCaptions(), 800);
-        return;
-      }
-      const cur = p.getOption?.(mod, 'track') as YtTrack | undefined;
-      const curId = cur?.languageCode ? trackId(cur) : undefined;
-      const want =
-        matchCaption(list, this.captionTrack, trackId) ??
-        (cur?.languageCode && cur.kind !== 'asr' ? cur : undefined) ??
-        // 자동 생성 자막보다 직접 만든 자막을 먼저
-        list.find((t) => t.kind !== 'asr') ??
-        list[0];
-      const wantId = trackId(want);
-      if (curId !== wantId && this.appliedTrack !== wantId) p.setOption?.(mod, 'track', want);
-      this.appliedTrack = wantId;
+      const loaded = p.getOptions?.() ?? [];
+      for (const m of ['captions', 'cc']) if (loaded.includes(m)) p.unloadModule?.(m);
     } catch {
       /* 플레이어 내부 API가 바뀌어도 재생에는 영향 없게 */
-    }
-  }
-
-  setCaptions(on: boolean, trackId?: string) {
-    this.captions = on;
-    this.captionTrack = trackId;
-    this.captionRetries = 0;
-    this.applyCaptions();
-  }
-
-  getCaptionTracks() {
-    const p = this.player as unknown as YtCaptionsApi | null;
-    if (!p || !this.ready) return { tracks: [] };
-    try {
-      const mod = captionsModule(p);
-      if (!mod) return { tracks: [] };
-      const list = (p.getOption?.(mod, 'tracklist') as YtTrack[] | undefined) ?? [];
-      const cur = p.getOption?.(mod, 'track') as YtTrack | undefined;
-      const curId = this.appliedTrack ?? (cur?.languageCode ? trackId(cur) : undefined);
-      const tracks = list.map((t) => ({
-        id: trackId(t),
-        name: t.displayName || t.languageName || t.languageCode,
-        auto: t.kind === 'asr',
-      }));
-      return {
-        tracks: [...tracks.filter((t) => !t.auto), ...tracks.filter((t) => t.auto)],
-        current: curId,
-      };
-    } catch {
-      return { tracks: [] };
     }
   }
 
@@ -239,8 +147,6 @@ export class YouTubeEngine implements Engine {
       this.pending = { videoId, opts };
       return;
     }
-    this.captionRetries = 0;
-    this.appliedTrack = undefined;
     const args = { videoId, startSeconds: Math.max(0, Math.floor(opts.start ?? 0)) };
     if (opts.autoplay) this.player.loadVideoById(args);
     else this.player.cueVideoById(args);
@@ -297,22 +203,8 @@ export class FakeEngine implements Engine {
   private playing = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private el: HTMLElement | null = null;
-  private captions: { on: boolean; track?: string } = { on: false };
 
   constructor(private events: EngineEvents = noopEvents) {}
-
-  setCaptions(on: boolean, trackId?: string) {
-    this.captions = { on, track: trackId };
-  }
-  getCaptionTracks() {
-    if (!this.captions.on) return { tracks: [] };
-    const tracks = [
-      { id: '.ko', name: '한국어', auto: false },
-      { id: '.en', name: '영어', auto: false },
-      { id: 'a.ko', name: '한국어 (자동 생성됨)', auto: true },
-    ];
-    return { tracks, current: tracks.find((t) => t.id === this.captions.track)?.id ?? '.ko' };
-  }
 
   mount(el: HTMLElement) {
     this.el = el;
@@ -522,12 +414,6 @@ export class DualEngine implements Engine {
   setMuted(muted: boolean) {
     this.muted = muted;
     this.players.forEach((p) => p.setMuted(muted));
-  }
-  setCaptions(on: boolean, trackId?: string) {
-    this.players.forEach((p) => p.setCaptions?.(on, trackId));
-  }
-  getCaptionTracks() {
-    return this.cur.getCaptionTracks?.() ?? { tracks: [] };
   }
   getTime() {
     return this.cur.getTime();

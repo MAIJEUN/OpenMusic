@@ -36,16 +36,6 @@ export interface PlaybackSettings {
   skipSilence: boolean;
   /** 이 시간(초) 이상 무음이 이어지면 다음 곡으로 */
   silenceSeconds: number;
-  /** 동영상 위에 YouTube 자막 표시 */
-  videoCaptions: boolean;
-  /** 동영상 자막으로 고른 자막 ID (.ko, a.ko 등). 없으면 직접 만든 자막을 우선 */
-  videoCaptionTrack?: string;
-}
-
-/** 가사 탭: 가사와 YouTube 자막 중 무엇을 먼저 보여줄지, 자막 언어 */
-export interface LyricsPref {
-  source: 'lyrics' | 'captions';
-  lang?: string;
 }
 
 export type Dialog =
@@ -64,10 +54,6 @@ interface UiState {
   /** 재생 설정 */
   playback: PlaybackSettings;
   setPlayback: (patch: Partial<PlaybackSettings>) => void;
-  lyricsPref: LyricsPref;
-  setLyricsPref: (patch: Partial<LyricsPref>) => void;
-  /** 자막 고르기: 동영상 자막과 가사 탭 자막에 함께 적용 */
-  setCaptionTrack: (id: string) => void;
   nowPlayingOpen: boolean;
   npTab: NowPlayingTab;
   npMode: 'song' | 'video';
@@ -94,12 +80,8 @@ export const useUi = create<UiState>()(
   persist(
     (set) => ({
       sidebarCollapsed: false,
-      playback: { crossfade: 5, skipNonMusic: true, skipSilence: true, silenceSeconds: 3, videoCaptions: false },
+      playback: { crossfade: 5, skipNonMusic: true, skipSilence: true, silenceSeconds: 3 },
       setPlayback: (patch) => set((s) => ({ playback: { ...s.playback, ...patch } })),
-      lyricsPref: { source: 'lyrics' },
-      setLyricsPref: (patch) => set((s) => ({ lyricsPref: { ...s.lyricsPref, ...patch } })),
-      setCaptionTrack: (id) =>
-        set((s) => ({ playback: { ...s.playback, videoCaptionTrack: id }, lyricsPref: { ...s.lyricsPref, lang: id } })),
       nowPlayingOpen: false,
       npTab: 'upnext',
       npMode: 'song',
@@ -125,7 +107,7 @@ export const useUi = create<UiState>()(
     }),
     {
       name: 'om-ui',
-      partialize: (s) => ({ sidebarCollapsed: s.sidebarCollapsed, npMode: s.npMode, playback: s.playback, lyricsPref: s.lyricsPref }),
+      partialize: (s) => ({ sidebarCollapsed: s.sidebarCollapsed, npMode: s.npMode, playback: s.playback }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<UiState>;
         return { ...current, ...p, playback: { ...current.playback, ...(p.playback ?? {}) } };

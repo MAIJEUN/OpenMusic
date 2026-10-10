@@ -311,15 +311,6 @@ function PlaybackSettingsForm() {
         />
       </div>
 
-      <div className="settings__row">
-        <div className="settings__text">
-          <div className="settings__title">동영상에 YouTube 자막 표시</div>
-          <div className="settings__desc">
-            끄면 업로더가 기본으로 켜 둔 자막도 숨깁니다. 플레이어 페이지 동영상 화면의 CC 버튼으로도 바꿀 수 있어요. 자막 내용은 가사 탭에서 볼 수 있어요.
-          </div>
-        </div>
-        <Switch checked={playback.videoCaptions} onChange={(v) => set({ videoCaptions: v })} label="동영상에 YouTube 자막 표시" />
-      </div>
     </div>
   );
 }

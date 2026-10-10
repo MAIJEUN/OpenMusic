@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { artistNames } from '../lib/format';
 import { thumbSize } from '../lib/thumb';
@@ -47,7 +47,6 @@ export function PlayerHost() {
         engine.setMuted(muted);
         engineRef.current = engine;
         attachEngine(engine);
-        setEngineReady(true);
         // 새로고침 후 마지막 곡을 대기 상태로 준비
         const item = queue[index];
         if (item) engine.load(item.track.videoId, { autoplay: false, start: position, durationHint: item.track.duration });
@@ -86,14 +85,6 @@ export function PlayerHost() {
     sync();
     return () => cancelAnimationFrame(raf);
   }, [slot, visible]);
-
-  // 동영상 위 YouTube 자막 표시 설정
-  const videoCaptions = useUi((s) => s.playback.videoCaptions);
-  const videoCaptionTrack = useUi((s) => s.playback.videoCaptionTrack);
-  const [engineReady, setEngineReady] = useState(false);
-  useEffect(() => {
-    if (engineReady) engineRef.current?.setCaptions?.(videoCaptions, videoCaptionTrack);
-  }, [videoCaptions, videoCaptionTrack, engineReady]);
 
   useMediaSession();
   useDocumentTitle();

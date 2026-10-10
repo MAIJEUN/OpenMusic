@@ -1,4 +1,4 @@
-import type { Captions, CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, UpNext } from '../../shared/types';
+import type { CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, UpNext } from '../../shared/types';
 
 /** 배포 시 Cloudflare Worker 주소 (예: https://openmusic-api.xxx.workers.dev). 비어 있으면 같은 출처의 /api 사용 */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
@@ -62,10 +62,15 @@ export const api = {
   upNext: (videoId?: string, list?: string) =>
     cachedGet<UpNext>(`/upnext?${videoId ? `v=${enc(videoId)}` : ''}${list ? `&list=${enc(list)}` : ''}`),
   search: (q: string, filter: SearchFilter = 'song') => cachedGet<SearchResult>(`/search?q=${enc(q)}&filter=${filter}`),
-  lyrics: (videoId: string) => cachedGet<Lyrics | null>(`/lyrics/${enc(videoId)}`, 60 * 60_000),
-  // v: 자막 고르는 방식이 바뀌면 올려서 브라우저에 1시간 남는 이전 응답을 쓰지 않게 한다
-  captions: (videoId: string, lang?: string) =>
-    cachedGet<Captions | null>(`/captions/${enc(videoId)}?v=3${lang ? `&lang=${enc(lang)}` : ''}`, 60 * 60_000),
+  /** 가사 (시간 동기화 가사가 있으면 synced 포함). 외부 가사 DB 검색용으로 곡 정보를 함께 보낸다 */
+  lyrics: (videoId: string, q: { title?: string; artist?: string; album?: string; duration?: number } = {}) => {
+    const p = new URLSearchParams({ v: '2' });
+    if (q.title) p.set('title', q.title);
+    if (q.artist) p.set('artist', q.artist);
+    if (q.album) p.set('album', q.album);
+    if (q.duration) p.set('duration', String(Math.round(q.duration)));
+    return cachedGet<Lyrics | null>(`/lyrics/${enc(videoId)}?${p}`, 60 * 60_000);
+  },
 };
 
 /** 재생목록 전체 트랙을 불러온다 (이어받기 토큰을 끝까지 따라감) */
