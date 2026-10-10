@@ -5,6 +5,7 @@
 import { Innertube, YTMusic, YTNodes } from 'youtubei.js';
 import type { ArtistRef, CollectionDetail, ContinuationPage, Lyrics, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
 import { stripVL } from '../shared/links.js';
+import { fetchCaptions } from './captions.js';
 import { bestThumb, parseRuns, runsOf, textOf, trackFromListItem, trackFromPanelVideo, type TrackFallback } from './normalize.js';
 import type { Provider } from './provider.js';
 
@@ -197,6 +198,10 @@ async function lyrics(videoId: string): Promise<Lyrics | null> {
   }
 }
 
+async function captions(videoId: string, lang?: string) {
+  return fetchCaptions(await yt(), videoId, lang, ytOptions.lang);
+}
+
 async function search(query: string, filter: SearchFilter): Promise<SearchResult> {
   const music = (await yt()).music;
   const res: AnyNode = await music.search(query, { type: filter });
@@ -221,5 +226,6 @@ export const youtubeProvider: Provider = {
   album: getAlbum,
   upNext,
   lyrics,
+  captions,
   search,
 };

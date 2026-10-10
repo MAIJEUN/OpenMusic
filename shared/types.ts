@@ -64,6 +64,30 @@ export interface Lyrics {
   source?: string;
 }
 
+/** YouTube 자막 언어 */
+export interface CaptionTrack {
+  /** 언어 코드 (예: ko, en, ja) */
+  code: string;
+  /** 표시 이름 (예: 한국어, 영어(자동 생성됨)) */
+  name: string;
+  /** 자동 생성 자막 여부 */
+  auto: boolean;
+}
+
+/** 시간이 붙은 자막 한 줄 (초) */
+export interface CaptionLine {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface Captions {
+  tracks: CaptionTrack[];
+  /** 지금 내용의 언어 코드 */
+  lang: string;
+  lines: CaptionLine[];
+}
+
 export interface UpNext {
   playlistId?: string;
   title?: string;

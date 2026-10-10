@@ -30,6 +30,8 @@ export interface Engine {
   getDuration(): number;
   /** 다음 곡으로 크로스페이드 (지원하는 엔진만) */
   crossfade?(videoId: string, seconds: number, opts?: Omit<LoadOptions, 'autoplay'>): void;
+  /** 동영상 위 YouTube 자막 표시 여부 (지원하는 엔진만) */
+  setCaptions?(on: boolean): void;
 }
 
 const noopEvents: EngineEvents = { onState: () => {}, onError: () => {}, onFatal: () => {} };
@@ -72,6 +74,7 @@ export class YouTubeEngine implements Engine {
   private pending: { videoId: string; opts: LoadOptions } | null = null;
   private volume = 100;
   private muted = false;
+  private captions = false;
 
   constructor(private events: EngineEvents = noopEvents) {}
 
@@ -92,6 +95,7 @@ export class YouTubeEngine implements Engine {
             iv_load_policy: 3,
             playsinline: 1,
             rel: 0,
+            cc_load_policy: 0,
             origin: location.origin,
           },
           events: {
@@ -105,6 +109,8 @@ export class YouTubeEngine implements Engine {
               }
             },
             onStateChange: (e) => this.events.onState(mapState(e.data)),
+            // 자막 모듈은 영상마다 새로 불려오므로 그때마다 설정을 다시 적용한다
+            onApiChange: () => this.applyCaptions(),
             onError: (e) => this.events.onError(Number(e.data)),
           },
         });
@@ -117,6 +123,45 @@ export class YouTubeEngine implements Engine {
     this.player.setVolume(this.volume);
     if (this.muted) this.player.mute();
     else this.player.unMute();
+  }
+
+  /**
+   * 업로더가 '기본 자막'을 켜 둔 영상은 임베드 플레이어에서도 자막이 저절로 나온다.
+   * 자막을 끈 상태면 자막 모듈을 내리고, 켠 상태면 모듈을 올려 첫 번째 자막을 고른다.
+   */
+  private applyCaptions() {
+    const p = this.player as unknown as {
+      getOptions?: () => string[];
+      loadModule?: (m: string) => void;
+      unloadModule?: (m: string) => void;
+      getOption?: (m: string, k: string) => unknown;
+      setOption?: (m: string, k: string, v: unknown) => void;
+    } | null;
+    if (!p || !this.ready) return;
+    try {
+      const loaded = p.getOptions?.() ?? [];
+      const mod = loaded.includes('captions') ? 'captions' : loaded.includes('cc') ? 'cc' : null;
+      if (!this.captions) {
+        if (mod) p.unloadModule?.(mod);
+        return;
+      }
+      if (!mod) {
+        p.loadModule?.('captions');
+        return;
+      }
+      const track = p.getOption?.(mod, 'track') as { languageCode?: string } | undefined;
+      if (!track?.languageCode) {
+        const list = (p.getOption?.(mod, 'tracklist') as { languageCode: string }[] | undefined) ?? [];
+        if (list[0]) p.setOption?.(mod, 'track', { languageCode: list[0].languageCode });
+      }
+    } catch {
+      /* 플레이어 내부 API가 바뀌어도 재생에는 영향 없게 */
+    }
+  }
+
+  setCaptions(on: boolean) {
+    this.captions = on;
+    this.applyCaptions();
   }
 
   load(videoId: string, opts: LoadOptions) {
@@ -391,6 +436,9 @@ export class DualEngine implements Engine {
   setMuted(muted: boolean) {
     this.muted = muted;
     this.players.forEach((p) => p.setMuted(muted));
+  }
+  setCaptions(on: boolean) {
+    this.players.forEach((p) => p.setCaptions?.(on));
   }
   getTime() {
     return this.cur.getTime();

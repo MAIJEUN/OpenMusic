@@ -1413,12 +1413,17 @@ p {
 .np__mobile-info {
   display: none;
 }
+.np__mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
 .np__toggle {
   display: inline-flex;
   padding: 2px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.1);
-  margin-bottom: 24px;
 }
 .np__toggle button {
   height: 32px;
@@ -1639,6 +1644,72 @@ p {
   margin-top: 24px;
   color: var(--text-3);
   font-size: 13px;
+}
+.lyrics__bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.lyrics__switch {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.lyrics__switch button {
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.lyrics__switch button.is-active {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+}
+.lyrics__lang {
+  height: 32px;
+  max-width: 200px;
+  padding: 0 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.lyrics__lang option {
+  background: #212121;
+}
+
+/* 시간에 맞춰 강조되는 자막 가사 */
+.synced__line {
+  padding: 6px 0;
+  font-size: 20px;
+  line-height: 1.45;
+  font-weight: 600;
+  white-space: pre-line;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transform-origin: left center;
+  transition:
+    color 0.3s,
+    opacity 0.3s,
+    transform 0.3s;
+}
+.synced__line:hover {
+  color: rgba(255, 255, 255, 0.75);
+}
+.synced__line--past {
+  color: rgba(255, 255, 255, 0.3);
+}
+.synced__line--active {
+  color: #fff;
+  transform: scale(1.03);
 }
 
 /* ---------------- 메뉴, 토스트, 모달 ---------------- */
@@ -2068,7 +2139,7 @@ p {
     height: 56px;
     align-items: center;
   }
-  .np__toggle {
+  .np__mode {
     margin: -48px 0 16px;
   }
   .np__art {
