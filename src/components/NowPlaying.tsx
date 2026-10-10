@@ -343,9 +343,17 @@ function LyricsPanel({ track }: { track: Track }) {
     }
     // 3) 뮤직비디오 앞부분의 '노래가 아닌 구간'(SponsorBlock) 길이만큼 미룬다
     const intro = sponsor.data?.find((g) => g.start < 2 && g.category === 'music_offtopic');
-    if (intro) return { lines: lines.map((l) => ({ ...l, start: l.start + intro.end, end: l.end + intro.end })), how: '인트로 길이' };
+    const shiftAll = (d: number, how: string) => ({ lines: lines.map((l) => ({ ...l, start: l.start + d, end: l.end + d })), how });
+    if (intro) return shiftAll(intro.end, '인트로 길이');
+    // 4) 노래 길이와 뮤직비디오의 '노래가 끝나는 지점'(아웃트로 시작) 차이 = 인트로 길이로 본다
+    const songLen = song?.duration ?? data?.duration;
+    const outro = sponsor.data?.find((g) => g.start > 10 && g.end >= playDuration - 1.5);
+    if (songLen && outro) {
+      const guess = outro.start - songLen;
+      if (guess > 0.5 && guess < 60) return shiftAll(guess, '노래·영상 길이 차이');
+    }
     return { lines, how: '' };
-  }, [data, song?.videoId, playingId, cp, sponsor.data, track.videoId]);
+  }, [data, song?.videoId, song?.duration, playingId, cp, sponsor.data, track.videoId, playDuration]);
 
   // 직접 맞춘 싱크는 영상별로 저장해서 다시 들어와도 유지
   const offset = useUi((s) => s.lyricsOffsets[playingId] ?? 0);
