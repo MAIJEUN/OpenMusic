@@ -88,6 +88,15 @@ export interface LyricLine {
   start: number;
   end: number;
   text: string;
+  /** 단어(글자)별 시간 — 있을 때만 노래방 효과를 보여준다 */
+  words?: LyricWord[];
+}
+
+export interface LyricWord {
+  start: number;
+  end: number;
+  /** 앞뒤 공백 포함 원문 조각 */
+  text: string;
 }
 
 export interface UpNext {

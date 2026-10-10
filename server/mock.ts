@@ -191,7 +191,10 @@ export const mockProvider: Provider = {
         .map((text, i) => {
           // 4번째 줄 뒤에 6초 간주
           const start = 6 + i * 4 + (i >= 4 ? 6 : 0);
-          return { start, end: start + 3.5, text };
+          // 끝자리 2: 단어별 시간도 있음 (노래방 효과 확인용)
+          const parts = text.split(/(?<= )/);
+          const words = videoId.endsWith('2') ? parts.map((w, j) => ({ start: start + (j * 3) / parts.length, end: start + ((j + 1) * 3) / parts.length, text: w })) : undefined;
+          return { start, end: start + 3.5, text, ...(words ? { words } : {}) };
         });
       return { text: LYRICS, source: '출처: OpenMusic Mock Lyrics (동기화)', synced: lines };
     }

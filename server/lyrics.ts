@@ -1,12 +1,14 @@
 /**
  * 가사 가져오기 (YouTube Music과 같은 외부 가사 데이터).
+ * 0) 단어별 시간이 있는 가사 — NetEase Cloud Music(yrc, 비공식 API) 또는 LRCLIB Enhanced LRC (노래방 효과용)
  * 1) YouTube Music 시간 동기화 가사 — 모바일 앱(ANDROID_MUSIC)이 받는 timedLyrics
  * 2) LRCLIB(https://lrclib.net) 시간 동기화 가사 — 공개 가사 DB, LRC 형식
  * 3) 시간 정보 없는 가사 — YouTube Music 가사 탭, 없으면 LRCLIB 일반 가사
  */
 import type { Innertube } from 'youtubei.js';
-import type { LyricLine, Lyrics } from '../shared/types.js';
+import type { LyricLine, LyricWord, Lyrics } from '../shared/types.js';
 import { findKey } from './json.js';
+import { neteaseWordLyrics } from './netease.js';
 import { textOf } from './normalize.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -20,13 +22,15 @@ export interface LyricsQuery {
   duration?: number;
 }
 
-function finishLines(lines: { start: number; text: string }[], duration?: number): LyricLine[] {
+function finishLines(lines: { start: number; text: string; words?: LyricWord[] }[], duration?: number): LyricLine[] {
   const sorted = lines.filter((l) => Number.isFinite(l.start)).sort((a, b) => a.start - b.start);
-  return sorted.map((l, i) => ({
-    start: l.start,
-    end: sorted[i + 1]?.start ?? Math.max(l.start + 5, duration ?? 0),
-    text: l.text.trim(),
-  }));
+  return sorted.map((l, i) => {
+    const end = sorted[i + 1]?.start ?? Math.max(l.start + 5, duration ?? 0);
+    const words = l.words?.length ? l.words.map((w, j, ws) => ({ ...w, end: Math.min(w.end, ws[j + 1]?.start ?? end, end) })) : undefined;
+    // 단어 시간이 있으면 마지막 단어가 끝날 때 줄도 끝난다 (간주 표시가 정확해진다)
+    const lineEnd = words ? Math.max(words[words.length - 1].end, l.start + 0.5) : end;
+    return { start: l.start, end: lineEnd, text: l.text.trim(), ...(words ? { words } : {}) };
+  });
 }
 
 /* ------------------------- YouTube Music ------------------------- */
@@ -89,13 +93,37 @@ interface LrclibItem {
 }
 
 /** LRC 형식: [mm:ss.xx] 가사 (한 줄에 시간 여러 개 가능) */
+/** Enhanced LRC의 단어 시간: "<00:12.34> 단어 <00:12.80> 단어" */
+function parseLrcWords(body: string, lineStart: number): { text: string; words?: LyricWord[] } {
+  const parts = [...body.matchAll(/<(\d+):(\d+(?:\.\d+)?)>([^<]*)/g)];
+  if (!parts.length) return { text: body.trim() };
+  const words: LyricWord[] = [];
+  const lead = body.slice(0, parts[0].index).replace(/<[^>]*>/g, '');
+  if (lead.trim()) words.push({ start: lineStart, end: lineStart, text: lead });
+  for (const p of parts) {
+    const start = Number(p[1]) * 60 + Number(p[2]);
+    if (p[3]) words.push({ start, end: Infinity, text: p[3] });
+  }
+  // 단어 끝 = 다음 단어 시작 (마지막 단어는 줄 끝에서 정해진다)
+  for (let i = 0; i < words.length - 1; i++) words[i].end = words[i + 1].start;
+  const text = words
+    .map((w) => w.text)
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { text, words: words.length > 1 && text ? words : undefined };
+}
+
 export function parseLrc(lrc: string, duration?: number): LyricLine[] {
-  const out: { start: number; text: string }[] = [];
+  const out: { start: number; text: string; words?: LyricWord[] }[] = [];
   for (const raw of lrc.split(/\r?\n/)) {
     const times = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
     if (!times.length) continue;
-    const text = raw.replace(/\[[^\]]*\]/g, '').trim();
-    for (const t of times) out.push({ start: Number(t[1]) * 60 + Number(t[2]), text });
+    const body = raw.replace(/\[[^\]]*\]/g, '');
+    for (const t of times) {
+      const start = Number(t[1]) * 60 + Number(t[2]);
+      out.push({ start, ...parseLrcWords(body, start) });
+    }
   }
   // 빈 줄(간주)은 앞 줄을 끝내는 표시로만 쓰고 보여주지 않는다
   const lines = finishLines(out, duration);
@@ -157,7 +185,9 @@ async function lrclib(q: LyricsQuery): Promise<Lyrics | null> {
   const diff = (x: LrclibItem) => (q.duration ? Math.abs(x.duration - q.duration) : 0);
   // 길이가 비슷한(±3초) 시간 동기화 가사 → 길이가 비슷한 가사 → 아무 동기화 가사
   const close = list.filter((x) => diff(x) <= 3).sort((a, b) => diff(a) - diff(b));
+  const hasWords = (x: LrclibItem) => !!x.syncedLyrics && /<\d+:\d+(\.\d+)?>/.test(x.syncedLyrics);
   const pick =
+    close.find(hasWords) ??
     close.find((x) => x.syncedLyrics) ??
     close[0] ??
     [...list].sort((a, b) => diff(a) - diff(b)).find((x) => x.syncedLyrics) ??
@@ -171,17 +201,24 @@ async function lrclib(q: LyricsQuery): Promise<Lyrics | null> {
 /* ------------------------------ 합치기 ------------------------------ */
 
 export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery): Promise<Lyrics | null> {
-  // YouTube Music과 LRCLIB을 동시에 조회해서 기다리는 시간을 줄인다
+  // YouTube Music, LRCLIB, NetEase를 동시에 조회해서 기다리는 시간을 줄인다
   const ytmTask = (async () => {
     const browseId = await lyricsBrowseId(yt, videoId).catch(() => undefined);
     const timed = browseId ? await ytmTimed(yt, browseId).catch(() => null) : null;
     return { browseId, timed };
   })();
   const lrTask = lrclib(q).catch(() => null);
+  const neTask = neteaseWordLyrics({ titles: titleCandidates(q.title ?? '', q.artist), artist: q.artist, duration: q.duration })
+    .then((r) => (r ? ({ text: r.lines.map((l) => l.text).join('\n'), source: '출처: NetEase Cloud Music', synced: r.lines, duration: r.duration } as Lyrics) : null))
+    .catch(() => null);
+
+  // 단어별 시간이 있는 가사가 있으면 그걸 먼저 (노래방 효과)
+  const [ne, lr] = await Promise.all([neTask, lrTask]);
+  if (lr?.synced?.some((l) => l.words)) return lr;
+  if (ne) return ne;
 
   const { browseId, timed } = await ytmTask;
   if (timed) return timed;
-  const lr = await lrTask;
   if (lr?.synced) return lr;
 
   if (browseId) {
