@@ -66,6 +66,8 @@ interface UiState {
   setPlayback: (patch: Partial<PlaybackSettings>) => void;
   lyricsPref: LyricsPref;
   setLyricsPref: (patch: Partial<LyricsPref>) => void;
+  /** 자막 고르기: 동영상 자막과 가사 탭 자막에 함께 적용 */
+  setCaptionTrack: (id: string) => void;
   nowPlayingOpen: boolean;
   npTab: NowPlayingTab;
   npMode: 'song' | 'video';
@@ -96,6 +98,8 @@ export const useUi = create<UiState>()(
       setPlayback: (patch) => set((s) => ({ playback: { ...s.playback, ...patch } })),
       lyricsPref: { source: 'lyrics' },
       setLyricsPref: (patch) => set((s) => ({ lyricsPref: { ...s.lyricsPref, ...patch } })),
+      setCaptionTrack: (id) =>
+        set((s) => ({ playback: { ...s.playback, videoCaptionTrack: id }, lyricsPref: { ...s.lyricsPref, lang: id } })),
       nowPlayingOpen: false,
       npTab: 'upnext',
       npMode: 'song',

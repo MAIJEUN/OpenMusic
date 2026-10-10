@@ -8,6 +8,7 @@ import { MdCheck, MdClosedCaption, MdClosedCaptionDisabled, MdClosedCaptionOff, 
 import { Link } from 'react-router-dom';
 import type { CaptionLine, Captions, Lyrics } from '../../shared/types';
 import { api } from '../lib/api';
+import { matchCaption } from '../lib/captionMatch';
 import { artistNames, formatTime } from '../lib/format';
 import { currentEngine, player, usePlayer, type QueueItem } from '../store/player';
 import { useUi, type MenuState, type NowPlayingTab } from '../store/ui';
@@ -300,13 +301,15 @@ function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; 
 function VideoCaptionsButton() {
   const on = useUi((s) => s.playback.videoCaptions);
   const setPlayback = useUi((s) => s.setPlayback);
+  const setCaptionTrack = useUi((s) => s.setCaptionTrack);
   const onClick = (e: MouseEvent) => {
     if (!on) return setPlayback({ videoCaptions: true });
     const { tracks, current } = currentEngine()?.getCaptionTracks?.() ?? { tracks: [] };
     const items: MenuState['items'] = tracks.map((t) => ({
       label: t.name,
       icon: t.id === current ? <MdCheck /> : <span />,
-      onSelect: () => setPlayback({ videoCaptionTrack: t.id }),
+      // 가사 탭의 자막도 같은 자막으로 바뀐다
+      onSelect: () => setCaptionTrack(t.id),
     }));
     if (!items.length) items.push({ label: '자막 목록을 불러오는 중이에요', icon: <span />, onSelect: () => {} });
     items.push('divider', { label: '자막 끄기', icon: <MdClosedCaptionOff />, onSelect: () => setPlayback({ videoCaptions: false }) });
@@ -329,13 +332,16 @@ function VideoCaptionsButton() {
 /** 기본 자막을 받은 뒤, 사용자가 고른 언어가 있으면 그 언어로 다시 받는다 */
 async function loadCaptions(videoId: string, lang?: string): Promise<Captions | null> {
   const first = await api.captions(videoId).catch(() => null);
-  if (!first || !lang || first.lang === lang || !first.tracks.some((t) => t.code === lang)) return first;
-  return (await api.captions(videoId, lang).catch(() => null)) ?? first;
+  // 동영상 자막 메뉴에서 고른 자막은 ID가 조금 다를 수 있어 같은 언어·종류로 맞춘다
+  const want = first && matchCaption(first.tracks, lang, (t) => t.code);
+  if (!first || !want || first.lang === want.code) return first;
+  return (await api.captions(videoId, want.code).catch(() => null)) ?? first;
 }
 
 function LyricsPanel({ videoId }: { videoId: string }) {
   const pref = useUi((s) => s.lyricsPref);
   const setPref = useUi((s) => s.setLyricsPref);
+  const setCaptionTrack = useUi((s) => s.setCaptionTrack);
   const lyrics = useAsync<Lyrics | null>(() => api.lyrics(videoId).catch(() => null), [videoId]);
   const caps = useAsync<Captions | null>(() => loadCaptions(videoId, pref.lang), [videoId, pref.lang]);
 
@@ -369,7 +375,11 @@ function LyricsPanel({ videoId }: { videoId: string }) {
             <select
               className="lyrics__lang"
               value={caps.data.lang}
-              onChange={(e) => setPref({ lang: e.target.value, source: 'captions' })}
+              onChange={(e) => {
+                // 동영상 자막도 같은 자막으로 바뀐다
+                setCaptionTrack(e.target.value);
+                setPref({ source: 'captions' });
+              }}
               aria-label="자막 언어"
             >
               {caps.data.tracks.map((tr) => (

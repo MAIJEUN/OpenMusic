@@ -1,3 +1,5 @@
+import { matchCaption } from '../lib/captionMatch';
+
 /**
  * 실제 재생을 담당하는 엔진.
  * - YouTubeEngine: YouTube IFrame Player API (정식 임베드 플레이어)
@@ -106,6 +108,8 @@ export class YouTubeEngine implements Engine {
   private muted = false;
   private captions = false;
   private captionTrack: string | undefined;
+  /** 이 영상에서 마지막으로 적용한 자막 (플레이어가 돌려주는 현재 자막 값은 늦게 바뀌는 경우가 있다) */
+  private appliedTrack: string | undefined;
   private captionRetries = 0;
 
   constructor(private events: EngineEvents = noopEvents) {}
@@ -128,6 +132,8 @@ export class YouTubeEngine implements Engine {
             playsinline: 1,
             rel: 0,
             cc_load_policy: 0,
+            // 자막 이름 등 플레이어 글자를 한국어로
+            hl: 'ko',
             origin: location.origin,
           },
           events: {
@@ -167,10 +173,12 @@ export class YouTubeEngine implements Engine {
     try {
       const mod = captionsModule(p);
       if (!this.captions) {
+        this.appliedTrack = undefined;
         if (mod) p.unloadModule?.(mod);
         return;
       }
       if (!mod) {
+        this.appliedTrack = undefined;
         p.loadModule?.('captions');
         return;
       }
@@ -183,12 +191,14 @@ export class YouTubeEngine implements Engine {
       const cur = p.getOption?.(mod, 'track') as YtTrack | undefined;
       const curId = cur?.languageCode ? trackId(cur) : undefined;
       const want =
-        list.find((t) => trackId(t) === this.captionTrack) ??
+        matchCaption(list, this.captionTrack, trackId) ??
         (cur?.languageCode && cur.kind !== 'asr' ? cur : undefined) ??
         // 자동 생성 자막보다 직접 만든 자막을 먼저
         list.find((t) => t.kind !== 'asr') ??
         list[0];
-      if (curId !== trackId(want)) p.setOption?.(mod, 'track', want);
+      const wantId = trackId(want);
+      if (curId !== wantId && this.appliedTrack !== wantId) p.setOption?.(mod, 'track', want);
+      this.appliedTrack = wantId;
     } catch {
       /* 플레이어 내부 API가 바뀌어도 재생에는 영향 없게 */
     }
@@ -209,6 +219,7 @@ export class YouTubeEngine implements Engine {
       if (!mod) return { tracks: [] };
       const list = (p.getOption?.(mod, 'tracklist') as YtTrack[] | undefined) ?? [];
       const cur = p.getOption?.(mod, 'track') as YtTrack | undefined;
+      const curId = this.appliedTrack ?? (cur?.languageCode ? trackId(cur) : undefined);
       const tracks = list.map((t) => ({
         id: trackId(t),
         name: t.displayName || t.languageName || t.languageCode,
@@ -216,7 +227,7 @@ export class YouTubeEngine implements Engine {
       }));
       return {
         tracks: [...tracks.filter((t) => !t.auto), ...tracks.filter((t) => t.auto)],
-        current: cur?.languageCode ? trackId(cur) : undefined,
+        current: curId,
       };
     } catch {
       return { tracks: [] };
@@ -229,6 +240,7 @@ export class YouTubeEngine implements Engine {
       return;
     }
     this.captionRetries = 0;
+    this.appliedTrack = undefined;
     const args = { videoId, startSeconds: Math.max(0, Math.floor(opts.start ?? 0)) };
     if (opts.autoplay) this.player.loadVideoById(args);
     else this.player.cueVideoById(args);
