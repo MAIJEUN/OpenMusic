@@ -86,6 +86,8 @@ export interface Captions {
   /** 지금 내용의 자막 ID */
   lang: string;
   lines: CaptionLine[];
+  /** 요청한 자막에 내용이 없어 다른 자막을 대신 보여줄 때, 요청했던 자막 ID */
+  unavailable?: string;
 }
 
 export interface UpNext {
