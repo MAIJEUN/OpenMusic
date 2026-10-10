@@ -121,6 +121,11 @@ export function parseLrc(lrc: string, duration?: number): LyricLine[] {
 
 /** 제목에서 (Official MV), [Lyrics], feat. 같은 꾸밈말을 뗀다 */
 export function cleanTitle(title: string, artist?: string): string {
+  return titleCandidates(title, artist)[0] ?? '';
+}
+
+/** 검색해 볼 제목 후보들: "가수 - 제목"이면 제목 쪽, "제목 - 다른 표기"면 양쪽을 모두 시도 */
+function titleCandidates(title: string, artist?: string): string[] {
   let t = title
     .replace(/[(\[【［（][^)\]】］）]*(official|mv|m\/v|music video|lyric|audio|visualizer|live|teaser|가사|뮤직비디오|공식)[^)\]】］）]*[)\]】］）]/gi, ' ')
     .replace(/\b(official\s*)?(music\s*video|m\/?v)\b/gi, ' ')
@@ -128,25 +133,32 @@ export function cleanTitle(title: string, artist?: string): string {
     .replace(/＆/g, '&')
     .replace(/\s+/g, ' ')
     .trim();
-  // "가수 - 제목" 형태면 제목만
+  const out: string[] = [];
+  // 'Ditto', 「アイドル」처럼 따옴표 안에 든 게 보통 곡 제목
+  const quoted = /['"‘’“”「『](.+?)['"‘’“”」』]/.exec(t)?.[1]?.trim();
+  if (quoted) out.push(quoted);
   const dash = t.split(/\s+[-–—]\s+/);
   if (dash.length === 2) {
-    const [a, b] = dash;
-    if (artist && a.toLowerCase().includes(artist.toLowerCase())) t = b;
-    else if (artist && b.toLowerCase().includes(artist.toLowerCase())) t = a;
-    else t = b;
+    const [a, b] = dash.map((x) => x.trim());
+    const has = (x: string) => !!artist && artist.split(/[,&/]/).some((n) => n.trim() && x.toLowerCase().includes(n.trim().toLowerCase()));
+    if (has(a)) out.push(b);
+    else if (has(b)) out.push(a);
+    else out.push(a, b);
   }
-  return t.trim();
+  out.push(t);
+  return [...new Set(out.filter(Boolean))];
 }
 
 async function lrclibSearch(q: LyricsQuery): Promise<LrclibItem[]> {
-  const title = cleanTitle(q.title ?? '', q.artist);
-  if (!title) return [];
+  const titles = titleCandidates(q.title ?? '', q.artist).slice(0, 3);
+  if (!titles.length) return [];
   const tries: string[] = [];
-  const p = new URLSearchParams({ track_name: title });
-  if (q.artist) p.set('artist_name', q.artist);
-  tries.push(`${LRCLIB}/search?${p}`);
-  tries.push(`${LRCLIB}/search?${new URLSearchParams({ q: `${title} ${q.artist ?? ''}`.trim() })}`);
+  for (const title of titles) {
+    const p = new URLSearchParams({ track_name: title });
+    if (q.artist) p.set('artist_name', q.artist.split(/[,&]/)[0].trim());
+    tries.push(`${LRCLIB}/search?${p}`);
+  }
+  tries.push(`${LRCLIB}/search?${new URLSearchParams({ q: `${titles[0]} ${q.artist ?? ''}`.trim() })}`);
   for (const url of tries) {
     const res = await fetch(url, { headers: { 'User-Agent': UA, 'Lrclib-Client': UA } });
     if (!res.ok) continue;
@@ -176,28 +188,17 @@ async function lrclib(q: LyricsQuery): Promise<Lyrics | null> {
 /* ------------------------------ 합치기 ------------------------------ */
 
 export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery): Promise<Lyrics | null> {
-  let browseId: string | undefined;
-  try {
-    browseId = await lyricsBrowseId(yt, videoId);
-  } catch {
-    /* 가사 탭 없음 */
-  }
+  // YouTube Music과 LRCLIB을 동시에 조회해서 기다리는 시간을 줄인다
+  const ytmTask = (async () => {
+    const browseId = await lyricsBrowseId(yt, videoId).catch(() => undefined);
+    const timed = browseId ? await ytmTimed(yt, browseId).catch(() => null) : null;
+    return { browseId, timed };
+  })();
+  const lrTask = lrclib(q).catch(() => null);
 
-  if (browseId) {
-    try {
-      const timed = await ytmTimed(yt, browseId);
-      if (timed) return timed;
-    } catch {
-      /* 다음 방법으로 */
-    }
-  }
-
-  let lr: Lyrics | null = null;
-  try {
-    lr = await lrclib(q);
-  } catch {
-    /* LRCLIB 실패 */
-  }
+  const { browseId, timed } = await ytmTask;
+  if (timed) return timed;
+  const lr = await lrTask;
   if (lr?.synced) return lr;
 
   if (browseId) {
