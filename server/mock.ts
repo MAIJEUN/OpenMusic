@@ -174,8 +174,10 @@ export const mockProvider: Provider = {
     if (!videoId.endsWith('1')) return null;
     return {
       self: 'video',
+      selfDuration: 252,
       other: { videoId: `${videoId}s`, kind: 'song', duration: 200, title: '(노래)' },
-      segments: [{ self: 8, other: 0, duration: 200 }],
+      // 시간 대응표 없음: 브라우저가 SponsorBlock 인트로 구간으로 추정한다
+      segments: [],
     };
   },
 

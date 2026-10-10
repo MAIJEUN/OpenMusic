@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { Counterpart, Track } from '../../shared/types';
 import { api } from '../lib/api';
+import { skipSegments } from '../lib/sponsorblock';
 import { setSourceResolver, usePlayer } from '../store/player';
 import { useUi } from '../store/ui';
 
@@ -12,6 +13,36 @@ import { useUi } from '../store/ui';
 const cache = new Map<string, Counterpart | null>();
 const pending = new Map<string, Promise<Counterpart | null>>();
 
+/**
+ * 시간 대응표가 없을 때 뮤직비디오와 노래의 시간 차이(= 뮤직비디오 인트로 길이)를 추정한다.
+ * 가사 자동 싱크와 같은 값을 써서, 노래 ↔ 동영상 전환 때도 같은 부분부터 이어서 튼다.
+ * 1) SponsorBlock '노래가 아닌 구간'이 영상 맨 앞에 있으면 그 끝
+ * 2) 영상 끝의 노래 아닌 구간(아웃트로) 시작 지점 − 노래 길이
+ */
+async function withEstimatedSegments(selfId: string, cp: Counterpart | null): Promise<Counterpart | null> {
+  if (!cp || cp.segments.length || cp.self === cp.other.kind) return cp;
+  const selfIsVideo = cp.self === 'video';
+  const videoId = selfIsVideo ? selfId : cp.other.videoId;
+  const videoDur = selfIsVideo ? cp.selfDuration : cp.other.duration;
+  const songDur = selfIsVideo ? cp.other.duration : cp.selfDuration;
+  const segs = await skipSegments(videoId);
+  let shift: number | null = null;
+  const intro = segs.find((g) => g.start < 2 && g.category === 'music_offtopic');
+  if (intro) shift = intro.end;
+  else if (songDur && videoDur) {
+    const outro = segs.find((g) => g.start > 10 && g.end >= videoDur - 1.5);
+    const guess = outro ? outro.start - songDur : NaN;
+    if (guess > 0.5 && guess < 60) shift = guess;
+  }
+  if (shift === null) return cp;
+  const duration = songDur ?? 24 * 3600;
+  return {
+    ...cp,
+    estimated: true,
+    segments: [selfIsVideo ? { self: shift, other: 0, duration } : { self: 0, other: shift, duration }],
+  };
+}
+
 function fetchCounterpart(videoId: string): Promise<Counterpart | null> {
   if (cache.has(videoId)) return Promise.resolve(cache.get(videoId)!);
   let p = pending.get(videoId);
@@ -19,6 +50,7 @@ function fetchCounterpart(videoId: string): Promise<Counterpart | null> {
     p = api
       .counterpart(videoId)
       .catch(() => null)
+      .then((cp) => withEstimatedSegments(videoId, cp).catch(() => cp))
       .then((cp) => {
         cache.set(videoId, cp);
         pending.delete(videoId);
@@ -76,9 +108,13 @@ export function useAudioVersion() {
       if (now.queue[now.index]?.uid !== item.uid || !now.playingId) return;
       const target = pick(item.track, cp);
       if (target.videoId === now.playingId || !cp) return;
-      // 지금 재생 위치를 새 영상의 같은 부분으로 옮긴다
+      // 지금 재생 위치를 새 영상의 같은 부분으로 옮긴다.
+      // 가사 싱크를 직접 맞춰 둔 값도 반영 (가사 기준으로 두 영상의 실제 시간 차이를 알 수 있다)
       const fromSelf = now.playingId === item.track.videoId;
-      now.switchSource(target.videoId, target.duration, (t) => mapTime(cp, t, fromSelf));
+      const offs = useUi.getState().lyricsOffsets;
+      const offFrom = offs[now.playingId] ?? 0;
+      const offTo = offs[target.videoId] ?? 0;
+      now.switchSource(target.videoId, target.duration, (t) => mapTime(cp, t - offFrom, fromSelf) + offTo);
     };
 
     let lastUid: string | undefined;

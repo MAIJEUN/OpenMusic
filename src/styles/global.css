@@ -1696,29 +1696,99 @@ p {
 }
 
 /* 시간에 맞춰 강조되는 실시간 가사 */
+@property --lp {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+.np__panel--lyrics {
+  overflow-x: hidden;
+  /* 위아래 끝을 부드럽게 흐리게 */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 32px, #000 calc(100% - 96px), transparent 100%);
+}
+.synced {
+  /* 긴 줄이 패널을 넘어 가로 스크롤이 생기지 않게 (.lyrics 좌우 여백 안에서만 넓힌다) */
+  overflow-x: clip;
+  margin: 0 -8px;
+  padding: 4px 0 35vh;
+}
 .synced__line {
-  padding: 6px 0;
-  font-size: 20px;
-  line-height: 1.45;
-  font-weight: 600;
+  /* 노래방 효과가 글자 길이 기준으로 차오르도록 줄 너비를 글자에 맞춘다 */
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: clamp(20px, 1.55vw, 26px);
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   white-space: pre-line;
-  color: rgba(255, 255, 255, 0.45);
+  overflow-wrap: anywhere;
+  color: rgba(255, 255, 255, 0.42);
+  /* 지금 줄에서 멀수록 흐리게 */
+  opacity: calc(1 - var(--d, 0) * 0.14);
   cursor: pointer;
-  transform-origin: left center;
   transition:
-    color 0.3s,
-    opacity 0.3s,
-    transform 0.3s;
+    color 0.35s,
+    opacity 0.35s,
+    background-color 0.2s;
 }
 .synced__line:hover {
+  opacity: 1;
   color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.06);
 }
 .synced__line--past {
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.32);
 }
 .synced__line--active {
-  color: #fff;
-  transform: scale(1.03);
+  opacity: 1;
+  /* 노래방처럼 부르는 만큼 왼쪽부터 밝아진다 */
+  color: transparent;
+  background: linear-gradient(90deg, #fff var(--lp), rgba(255, 255, 255, 0.45) var(--lp)) text;
+  -webkit-background-clip: text;
+  filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.22));
+  transition:
+    --lp 0.3s linear,
+    opacity 0.35s;
+}
+.synced__line--active:hover {
+  background: linear-gradient(90deg, #fff var(--lp), rgba(255, 255, 255, 0.7) var(--lp)) text;
+  -webkit-background-clip: text;
+}
+/* 인트로·간주: 다음 가사까지 점 세 개가 차례로 차오른다 */
+.synced__gap {
+  display: flex;
+  gap: 10px;
+  padding: 14px 12px;
+}
+.synced__gap span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.25;
+  animation: gap-breathe 1.6s ease-in-out infinite;
+}
+.synced__gap span:nth-child(1) {
+  opacity: calc(0.25 + min(1, var(--gp) * 3) * 0.75);
+}
+.synced__gap span:nth-child(2) {
+  opacity: calc(0.25 + clamp(0, var(--gp) * 3 - 1, 1) * 0.75);
+  animation-delay: 0.2s;
+}
+.synced__gap span:nth-child(3) {
+  opacity: calc(0.25 + clamp(0, var(--gp) * 3 - 2, 1) * 0.75);
+  animation-delay: 0.4s;
+}
+@keyframes gap-breathe {
+  0%,
+  100% {
+    transform: scale(0.85);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 /* ---------------- 메뉴, 토스트, 모달 ---------------- */
@@ -2213,6 +2283,9 @@ p {
   }
   .np__panel {
     overflow: visible;
+  }
+  .np__panel--lyrics {
+    mask-image: none;
   }
 
   .toasts {
