@@ -168,11 +168,22 @@ export const mockProvider: Provider = {
     return { query, filter, tracks };
   },
 
+  async counterpart(videoId) {
+    await delay();
+    // 끝자리 1: 뮤직비디오(앞에 8초 인트로)와 노래 버전 짝
+    if (!videoId.endsWith('1')) return null;
+    return {
+      self: 'video',
+      other: { videoId: `${videoId}s`, kind: 'song', duration: 200, title: '(노래)' },
+      segments: [{ self: 8, other: 0, duration: 200 }],
+    };
+  },
+
   async lyrics(videoId) {
     await delay();
     if (videoId.endsWith('3')) return null;
     // 끝자리 1·2: 시간 동기화 가사 (6초부터 4초 간격)
-    if (/[12]$/.test(videoId)) {
+    if (/[12]s?$/.test(videoId)) {
       const lines = LYRICS.split('\n')
         .filter((l) => l.trim() && !l.startsWith('('))
         .map((text, i) => ({ start: 6 + i * 4, end: 6 + i * 4 + 4, text }));

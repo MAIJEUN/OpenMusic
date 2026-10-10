@@ -23,15 +23,18 @@ export function useSmartTransitions() {
     const onTrack = () => {
       const s = usePlayer.getState();
       const item = s.queue[s.index];
-      if (item?.uid === uid) return;
-      uid = item?.uid;
+      // 노래 ↔ 뮤직비디오로 바뀌면 구간 정보도 새로 받는다
+      const key = item ? `${item.uid}:${s.playingId}` : undefined;
+      if (key === uid) return;
+      const sameTrack = uid?.split(':')[0] === item?.uid;
+      uid = key;
       segments = [];
       skipped = new Set();
-      transitioned = false;
+      if (!sameTrack) transitioned = false;
       silenceSince = 0;
       if (item && settings().skipNonMusic) {
-        const id = item.uid;
-        skipSegments(item.track.videoId).then((list) => {
+        const id = key;
+        skipSegments(s.playingId ?? item.track.videoId).then((list) => {
           if (uid === id) segments = list;
         });
       }

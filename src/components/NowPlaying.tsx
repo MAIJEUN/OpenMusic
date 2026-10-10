@@ -6,8 +6,10 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useAsync } from '../hooks/useAsync';
 import { MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
 import { Link } from 'react-router-dom';
-import type { LyricLine, Lyrics, Track } from '../../shared/types';
+import type { Counterpart, LyricLine, Lyrics, Track } from '../../shared/types';
 import { api } from '../lib/api';
+import { skipSegments } from '../lib/sponsorblock';
+import { fetchCounterpart, mapTime } from '../player/useAudioVersion';
 import { artistNames, formatTime } from '../lib/format';
 import { player, usePlayer, type QueueItem } from '../store/player';
 import { useUi, type NowPlayingTab } from '../store/ui';
@@ -298,28 +300,72 @@ function QueueRow({ item, current, past }: { item: QueueItem; current: boolean; 
 /* ------------------------------ 가사 ------------------------------ */
 
 function LyricsPanel({ track }: { track: Track }) {
-  const duration = usePlayer((s) => s.duration);
-  // 곡 길이는 재생이 시작돼야 정확해서, 처음에는 목록에 있던 길이를 쓴다
-  const dur = Math.round(track.duration || duration || 0);
+  const playingId = usePlayer((s) => s.playingId) ?? track.videoId;
+  const playDuration = usePlayer((s) => s.duration);
+  // 노래 ↔ 뮤직비디오 짝: 가사는 노래(음원) 시간 기준이라 뮤직비디오를 틀 때는 시간을 옮겨야 한다
+  const cpState = useAsync<Counterpart | null>(() => fetchCounterpart(track.videoId), [track.videoId]);
+  const cp = cpState.data ?? null;
+  const song =
+    cp?.self === 'song' || (!cp && !track.isVideo)
+      ? { videoId: track.videoId, duration: track.duration }
+      : cp?.other.kind === 'song'
+        ? { videoId: cp.other.videoId, duration: cp.other.duration }
+        : null;
+
   const { loading, data } = useAsync<Lyrics | null>(
     () =>
-      api
-        .lyrics(track.videoId, { title: track.title, artist: artistNames(track.artists), album: track.album?.name, duration: dur || undefined })
-        .catch(() => null),
-    [track.videoId],
+      cpState.loading
+        ? new Promise<Lyrics | null>(() => {})
+        : api
+            .lyrics(song?.videoId ?? playingId, {
+              title: track.title,
+              artist: artistNames(track.artists),
+              album: track.album?.name,
+              duration: Math.round(song?.duration || playDuration || track.duration || 0) || undefined,
+            })
+            .catch(() => null),
+    [track.videoId, cpState.loading],
   );
   const [mode, setMode] = useState<'synced' | 'plain'>('synced');
-  // 싱크 조절: 뮤직비디오처럼 앞에 인트로가 있으면 가사 시간이 어긋날 수 있다
-  const [offset, setOffset] = useState(0);
-  useEffect(() => setOffset(0), [track.videoId]);
 
-  if (loading) return <div className="panel-spinner"><div className="spinner" /></div>;
+  // 자동 싱크: 지금 재생 중인 영상의 시간으로 가사 시간을 옮긴다
+  const sponsor = useAsync(() => skipSegments(playingId), [playingId]);
+  const auto = useMemo(() => {
+    const lines = data?.synced;
+    if (!lines?.length) return null;
+    // 1) 노래를 틀고 있으면 그대로
+    if (song && playingId === song.videoId) return { lines, how: '' };
+    // 2) YouTube Music의 노래 ↔ 뮤직비디오 시간 대응표
+    if (cp && song && cp.segments.length) {
+      const fromSelf = song.videoId === track.videoId;
+      const shift = (t: number) => mapTime(cp, t, fromSelf);
+      return { lines: lines.map((l) => ({ ...l, start: shift(l.start), end: shift(l.end) })), how: 'YouTube Music 시간 대응' };
+    }
+    // 3) 뮤직비디오 앞부분의 '노래가 아닌 구간'(SponsorBlock) 길이만큼 미룬다
+    const intro = sponsor.data?.find((g) => g.start < 2 && g.category === 'music_offtopic');
+    const shiftAll = (d: number, how: string) => ({ lines: lines.map((l) => ({ ...l, start: l.start + d, end: l.end + d })), how });
+    if (intro) return shiftAll(intro.end, '인트로 길이');
+    // 4) 노래 길이와 뮤직비디오의 '노래가 끝나는 지점'(아웃트로 시작) 차이 = 인트로 길이로 본다
+    const songLen = song?.duration ?? data?.duration;
+    const outro = sponsor.data?.find((g) => g.start > 10 && g.end >= playDuration - 1.5);
+    if (songLen && outro) {
+      const guess = outro.start - songLen;
+      if (guess > 0.5 && guess < 60) return shiftAll(guess, '노래·영상 길이 차이');
+    }
+    return { lines, how: '' };
+  }, [data, song?.videoId, song?.duration, playingId, cp, sponsor.data, track.videoId, playDuration]);
+
+  // 직접 맞춘 싱크는 영상별로 저장해서 다시 들어와도 유지
+  const offset = useUi((s) => s.lyricsOffsets[playingId] ?? 0);
+  const setOffset = (v: number) => useUi.getState().setLyricsOffset(playingId, Math.round(v * 10) / 10);
+
+  if (loading || cpState.loading) return <div className="panel-spinner"><div className="spinner" /></div>;
   if (!data) return <div className="panel-empty">가사를 사용할 수 없습니다</div>;
-  const synced = !!data.synced?.length && mode === 'synced';
+  const synced = !!auto && mode === 'synced';
 
   return (
     <div className="lyrics">
-      {data.synced?.length ? (
+      {auto ? (
         <div className="lyrics__bar">
           <div className="lyrics__switch" role="tablist">
             <button type="button" className={mode === 'synced' ? 'is-active' : ''} onClick={() => setMode('synced')}>
@@ -330,14 +376,17 @@ function LyricsPanel({ track }: { track: Track }) {
             </button>
           </div>
           {synced && (
-            <div className="lyrics__offset" title="가사가 노래보다 빠르거나 느리면 조절하세요">
-              <button type="button" aria-label="가사 0.5초 빠르게" onClick={() => setOffset((o) => Math.round((o - 0.5) * 10) / 10)}>
+            <div
+              className="lyrics__offset"
+              title={`가사가 노래보다 빠르거나 느리면 조절하세요${auto.how ? ` (자동 싱크: ${auto.how})` : ''}`}
+            >
+              <button type="button" aria-label="가사 0.5초 빠르게" onClick={() => setOffset(offset - 0.5)}>
                 −
               </button>
               <button type="button" className="lyrics__offset-value" aria-label="싱크 초기화" onClick={() => setOffset(0)}>
-                {offset === 0 ? '싱크' : `${offset > 0 ? '+' : ''}${offset.toFixed(1)}초`}
+                {offset !== 0 ? `${offset > 0 ? '+' : ''}${offset.toFixed(1)}초` : auto.how ? '자동' : '싱크'}
               </button>
-              <button type="button" aria-label="가사 0.5초 느리게" onClick={() => setOffset((o) => Math.round((o + 0.5) * 10) / 10)}>
+              <button type="button" aria-label="가사 0.5초 느리게" onClick={() => setOffset(offset + 0.5)}>
                 +
               </button>
             </div>
@@ -346,7 +395,7 @@ function LyricsPanel({ track }: { track: Track }) {
       ) : null}
 
       {synced ? (
-        <SyncedLines key={track.videoId} lines={data.synced!} offset={offset} />
+        <SyncedLines key={playingId} lines={auto!.lines} offset={offset} />
       ) : (
         <p className="lyrics__text">{data.text}</p>
       )}

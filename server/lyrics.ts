@@ -6,6 +6,7 @@
  */
 import type { Innertube } from 'youtubei.js';
 import type { LyricLine, Lyrics } from '../shared/types.js';
+import { findKey } from './json.js';
 import { textOf } from './normalize.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -17,24 +18,6 @@ export interface LyricsQuery {
   album?: string;
   /** 재생 중인 영상 길이(초) */
   duration?: number;
-}
-
-/** 응답 JSON에서 key를 가진 첫 번째 값을 찾는다 (구조가 자주 바뀌어서 경로 대신 이름으로 찾음) */
-function findKey(root: unknown, key: string): any {
-  const stack: unknown[] = [root];
-  let guard = 0;
-  while (stack.length && guard++ < 200_000) {
-    const node = stack.pop();
-    if (!node || typeof node !== 'object') continue;
-    if (Array.isArray(node)) {
-      for (let i = node.length - 1; i >= 0; i--) stack.push(node[i]);
-      continue;
-    }
-    const obj = node as Record<string, unknown>;
-    if (key in obj) return obj[key];
-    for (const v of Object.values(obj)) if (v && typeof v === 'object') stack.push(v);
-  }
-  return undefined;
 }
 
 function finishLines(lines: { start: number; text: string }[], duration?: number): LyricLine[] {
@@ -125,7 +108,7 @@ export function cleanTitle(title: string, artist?: string): string {
 }
 
 /** 검색해 볼 제목 후보들: "가수 - 제목"이면 제목 쪽, "제목 - 다른 표기"면 양쪽을 모두 시도 */
-function titleCandidates(title: string, artist?: string): string[] {
+export function titleCandidates(title: string, artist?: string): string[] {
   let t = title
     .replace(/[(\[【［（][^)\]】］）]*(official|mv|m\/v|music video|lyric|audio|visualizer|live|teaser|가사|뮤직비디오|공식)[^)\]】］）]*[)\]】］）]/gi, ' ')
     .replace(/\b(official\s*)?(music\s*video|m\/?v)\b/gi, ' ')
@@ -182,7 +165,7 @@ async function lrclib(q: LyricsQuery): Promise<Lyrics | null> {
   const synced = pick.syncedLyrics ? parseLrc(pick.syncedLyrics, q.duration) : undefined;
   const text = pick.plainLyrics?.trim() || synced?.map((l) => l.text).join('\n') || '';
   if (!text) return null;
-  return { text, source: '출처: LRCLIB', synced: synced?.length ? synced : undefined };
+  return { text, source: '출처: LRCLIB', synced: synced?.length ? synced : undefined, duration: pick.duration || undefined };
 }
 
 /* ------------------------------ 합치기 ------------------------------ */

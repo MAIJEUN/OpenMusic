@@ -37,7 +37,9 @@ function applyPalette(p: Palette, force = false) {
  */
 export function ThemeController() {
   const item = usePlayer((s) => s.queue[s.index]);
-  const videoId = item?.track.videoId;
+  // 노래/동영상 전환으로 다른 버전이 재생 중이면 그 영상 기준
+  const playingId = usePlayer((s) => s.playingId);
+  const videoId = playingId ?? item?.track.videoId;
   const thumbnail = item?.track.thumbnail;
   const videoVisible = useUi((s) => s.nowPlayingOpen && s.npMode === 'video');
   const spectrumState = useSpectrumState();

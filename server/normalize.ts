@@ -31,6 +31,9 @@ export function textOf(t: AnyNode): string {
     const s = t.toString();
     if (s && s !== '[object Object]') return s;
   }
+  // 파싱 전 원본 JSON ({ simpleText } 또는 { runs: [{ text }] })
+  if (typeof t.simpleText === 'string') return t.simpleText;
+  if (Array.isArray(t.runs)) return t.runs.map((r: AnyNode) => r?.text ?? '').join('');
   return t.text ?? '';
 }
 
