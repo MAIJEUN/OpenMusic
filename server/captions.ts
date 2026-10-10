@@ -42,7 +42,8 @@ function isNoise(text: string): boolean {
 function clean(lines: CaptionLine[]): CaptionLine[] {
   const out: CaptionLine[] = [];
   for (const l of lines) {
-    const text = l.text.replace(/\r/g, '').replace(/[ \t]+/g, ' ').trim();
+    // 줄 앞뒤의 음표(♪ 가사 ♪)는 떼어낸다
+    const text = l.text.replace(/\r/g, '').replace(/[ \t]+/g, ' ').trim().replace(/^[♪♫♬\s]+|[♪♫♬\s]+$/g, '');
     if (isNoise(text)) continue;
     const prev = out[out.length - 1];
     // 자동 자막은 같은 문장이 겹쳐 이어지는 경우가 있어 바로 앞 줄과 같으면 합친다
