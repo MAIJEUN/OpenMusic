@@ -54,6 +54,9 @@ interface UiState {
   /** 재생 설정 */
   playback: PlaybackSettings;
   setPlayback: (patch: Partial<PlaybackSettings>) => void;
+  /** 곡(영상 ID)별로 직접 맞춘 가사 싱크(초) */
+  lyricsOffsets: Record<string, number>;
+  setLyricsOffset: (videoId: string, seconds: number) => void;
   nowPlayingOpen: boolean;
   npTab: NowPlayingTab;
   npMode: 'song' | 'video';
@@ -82,6 +85,17 @@ export const useUi = create<UiState>()(
       sidebarCollapsed: false,
       playback: { crossfade: 5, skipNonMusic: true, skipSilence: true, silenceSeconds: 3 },
       setPlayback: (patch) => set((s) => ({ playback: { ...s.playback, ...patch } })),
+      lyricsOffsets: {},
+      setLyricsOffset: (videoId, seconds) =>
+        set((s) => {
+          const next = { ...s.lyricsOffsets };
+          delete next[videoId];
+          if (seconds !== 0) next[videoId] = seconds;
+          // 오래된 것부터 지워 너무 커지지 않게
+          const keys = Object.keys(next);
+          for (const k of keys.slice(0, Math.max(0, keys.length - 500))) delete next[k];
+          return { lyricsOffsets: next };
+        }),
       nowPlayingOpen: false,
       npTab: 'upnext',
       npMode: 'song',
@@ -107,7 +121,7 @@ export const useUi = create<UiState>()(
     }),
     {
       name: 'om-ui',
-      partialize: (s) => ({ sidebarCollapsed: s.sidebarCollapsed, npMode: s.npMode, playback: s.playback }),
+      partialize: (s) => ({ sidebarCollapsed: s.sidebarCollapsed, npMode: s.npMode, playback: s.playback, lyricsOffsets: s.lyricsOffsets }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<UiState>;
         return { ...current, ...p, playback: { ...current.playback, ...(p.playback ?? {}) } };

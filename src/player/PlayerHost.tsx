@@ -2,10 +2,11 @@ import { useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { artistNames } from '../lib/format';
 import { thumbSize } from '../lib/thumb';
-import { attachEngine, usePlayer } from '../store/player';
+import { attachEngine, sourceOf, usePlayer } from '../store/player';
 import { toast, useUi } from '../store/ui';
 import { DualEngine, FakeEngine, YouTubeEngine, type Engine, type EngineEvents } from './engine';
 import { useSmartTransitions } from './useSmartTransitions';
+import { useAudioVersion } from './useAudioVersion';
 import { anchorPause, anchorPlay } from './mediaAnchor';
 
 const HIDDEN: Partial<CSSStyleDeclaration> = {
@@ -49,7 +50,11 @@ export function PlayerHost() {
         attachEngine(engine);
         // 새로고침 후 마지막 곡을 대기 상태로 준비
         const item = queue[index];
-        if (item) engine.load(item.track.videoId, { autoplay: false, start: position, durationHint: item.track.duration });
+        if (item) {
+          const src = sourceOf(item.track);
+          usePlayer.setState({ playingId: src.videoId });
+          engine.load(src.videoId, { autoplay: false, start: position, durationHint: src.duration ?? item.track.duration });
+        }
       });
     const tick = setInterval(() => usePlayer.getState()._tick(), 250);
     return () => {
@@ -89,6 +94,7 @@ export function PlayerHost() {
   useMediaSession();
   useDocumentTitle();
   useSmartTransitions();
+  useAudioVersion();
 
   return <div ref={hostRef} className="player-host" aria-hidden />;
 }

@@ -165,7 +165,7 @@ async function lrclib(q: LyricsQuery): Promise<Lyrics | null> {
   const synced = pick.syncedLyrics ? parseLrc(pick.syncedLyrics, q.duration) : undefined;
   const text = pick.plainLyrics?.trim() || synced?.map((l) => l.text).join('\n') || '';
   if (!text) return null;
-  return { text, source: '출처: LRCLIB', synced: synced?.length ? synced : undefined };
+  return { text, source: '출처: LRCLIB', synced: synced?.length ? synced : undefined, duration: pick.duration || undefined };
 }
 
 /* ------------------------------ 합치기 ------------------------------ */

@@ -33,6 +33,8 @@ interface PlayerState {
   duration: number;
   volume: number;
   muted: boolean;
+  /** 실제로 재생 중인 영상 ID (노래/동영상 전환으로 곡의 다른 버전을 틀 수 있다) */
+  playingId: string | null;
 
   current: () => QueueItem | undefined;
   /**
@@ -65,6 +67,8 @@ interface PlayerState {
   toggleShuffle: () => void;
   /** 다음 곡으로 크로스페이드 (엔진이 지원하지 않으면 바로 다음 곡) */
   crossfadeNext: (seconds: number) => void;
+  /** 같은 곡의 다른 버전(노래 ↔ 뮤직비디오)으로 바꿔 튼다. mapTime은 지금 위치 → 새 영상 위치 */
+  switchSource: (videoId: string, duration?: number, mapTime?: (t: number) => number) => void;
 
   /* 엔진 → 스토어 */
   _onEngineState: (s: EngineState) => void;
@@ -73,6 +77,14 @@ interface PlayerState {
 }
 
 let engine: Engine | null = null;
+
+/** 곡 → 실제로 틀 영상. 노래/동영상 설정에 따라 바깥(useAudioVersion)에서 바꿔 끼운다 */
+export type SourceResolver = (track: Track) => { videoId: string; duration?: number };
+let resolveSource: SourceResolver = (t) => ({ videoId: t.videoId, duration: t.duration });
+export function setSourceResolver(fn: SourceResolver) {
+  resolveSource = fn;
+}
+export const sourceOf = (t: Track) => resolveSource(t);
 let consecutiveErrors = 0;
 
 /**
@@ -118,8 +130,10 @@ export const usePlayer = create<PlayerState>()(
           return;
         }
         cancelPendingSeek();
-        set({ status: autoplay ? 'loading' : 'paused', position: start, duration: item.track.duration ?? 0 });
-        engine?.load(item.track.videoId, { autoplay, start, durationHint: item.track.duration });
+        const src = resolveSource(item.track);
+        const dur = src.duration ?? item.track.duration;
+        set({ status: autoplay ? 'loading' : 'paused', position: start, duration: dur ?? 0, playingId: src.videoId });
+        engine?.load(src.videoId, { autoplay, start, durationHint: dur });
       };
 
       const goTo = (index: number, autoplay = true) => {
@@ -157,6 +171,7 @@ export const usePlayer = create<PlayerState>()(
         duration: 0,
         volume: 100,
         muted: false,
+        playingId: null,
 
         current: () => get().queue[get().index],
 
@@ -380,8 +395,21 @@ export const usePlayer = create<PlayerState>()(
           const item = get().queue[nextIndex];
           cancelPendingSeek();
           consecutiveErrors = 0;
-          set({ index: nextIndex, position: 0, duration: item.track.duration ?? 0, status: 'loading' });
-          engine.crossfade(item.track.videoId, seconds, { durationHint: item.track.duration });
+          const src = resolveSource(item.track);
+          const dur = src.duration ?? item.track.duration;
+          set({ index: nextIndex, position: 0, duration: dur ?? 0, status: 'loading', playingId: src.videoId });
+          engine.crossfade(src.videoId, seconds, { durationHint: dur });
+        },
+
+        switchSource: (videoId, duration, mapTime) => {
+          const s = get();
+          if (!engine || s.playingId === videoId || !s.queue[s.index]) return;
+          const playing = s.status === 'playing' || s.status === 'buffering' || s.status === 'loading';
+          const pos = mapTime ? mapTime(s.position) : s.position;
+          const start = Math.max(0, Math.min(pos, (duration ?? Infinity) - 1));
+          cancelPendingSeek();
+          set({ playingId: videoId, position: start, ...(duration ? { duration } : {}), status: playing ? 'loading' : s.status });
+          engine.load(videoId, { autoplay: playing, start, durationHint: duration });
         },
 
         _onEngineState: (state) => {

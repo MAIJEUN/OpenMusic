@@ -183,7 +183,7 @@ export const mockProvider: Provider = {
     await delay();
     if (videoId.endsWith('3')) return null;
     // 끝자리 1·2: 시간 동기화 가사 (6초부터 4초 간격)
-    if (/[12]$/.test(videoId)) {
+    if (/[12]s?$/.test(videoId)) {
       const lines = LYRICS.split('\n')
         .filter((l) => l.trim() && !l.startsWith('('))
         .map((text, i) => ({ start: 6 + i * 4, end: 6 + i * 4 + 4, text }));
