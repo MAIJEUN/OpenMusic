@@ -209,3 +209,76 @@ export function trackFromPanelVideo(node: AnyNode): Track | null {
     })(),
   };
 }
+
+/* ------------------------------------------------------------------ */
+/*  원본 JSON 직접 해석 (서버리스 CPU 시간 절약용)                         */
+/* ------------------------------------------------------------------ */
+
+/** 원본 런({ text, navigationEndpoint })을 파서 결과 모양({ text, endpoint.payload })으로 */
+function rawRuns(text: AnyNode): Run[] {
+  const runs: AnyNode[] = Array.isArray(text?.runs) ? text.runs : [];
+  if (!runs.length) {
+    const s = textOf(text);
+    return s ? [{ text: s }] : [];
+  }
+  return runs.map((r) => {
+    const ep = r?.navigationEndpoint;
+    const payload = ep?.browseEndpoint ?? ep?.watchEndpoint;
+    return { text: String(r?.text ?? ''), endpoint: payload ? { payload } : undefined };
+  });
+}
+
+/**
+ * musicResponsiveListItemRenderer(원본 JSON) → Track.
+ * youtubei.js 파서를 거치지 않아 CPU를 훨씬 덜 쓴다 (Cloudflare 무료 요금제의 요청당 CPU 제한 대응).
+ */
+export function trackFromRawListItem(r: AnyNode, fallback: TrackFallback = {}): Track | null {
+  if (!r) return null;
+  const pt = r.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+  if (pt && pt !== 'MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_TRACK_PAGE') return null;
+
+  const cols: AnyNode[] = (r.flexColumns ?? []).map((c: AnyNode) => c?.musicResponsiveListItemFlexColumnRenderer?.text);
+  const titleRuns = rawRuns(cols[0]);
+  const play = r.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint;
+  const videoId: unknown = r.playlistItemData?.videoId ?? titleRuns[0]?.endpoint?.payload?.videoId ?? play?.videoId;
+  if (!videoId || typeof videoId !== 'string') return null;
+
+  const title = titleRuns.map((x) => x.text).join('');
+  const info1 = parseRuns(rawRuns(cols[1]));
+  const infoRest = parseRuns(cols.slice(2).flatMap((c) => rawRuns(c)));
+
+  let artists = info1.artists.length ? info1.artists : infoRest.artists;
+  const plain1 = info1.plain.filter((p) => !TYPE_LABELS.has(p));
+  if (!artists.length && fallback.artists?.length) artists = fallback.artists;
+  if (!artists.length && plain1.length) artists = [{ name: plain1[0] }];
+
+  const fixedText = (r.fixedColumns ?? [])
+    .map((c: AnyNode) => textOf(c?.musicResponsiveListItemFixedColumnRenderer?.text))
+    .find((t: string) => DURATION.test(t));
+  const duration = parseDuration(fixedText) || info1.duration || infoRest.duration || undefined;
+
+  const vtEp = titleRuns[0]?.endpoint?.payload ?? play;
+  const vt = vtEp?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType;
+  const usedNames = new Set(artists.map((a) => a.name));
+  const extraText = [...plain1, ...infoRest.plain.filter((p) => !TYPE_LABELS.has(p))]
+    .filter((p) => !usedNames.has(p))
+    .join(' • ');
+  const explicit = (r.badges ?? []).some((b: AnyNode) => b?.musicInlineBadgeRenderer?.icon?.iconType === 'MUSIC_EXPLICIT_BADGE');
+
+  return {
+    videoId,
+    title,
+    artists,
+    album: info1.album ?? infoRest.album ?? fallback.album,
+    duration,
+    thumbnail: bestThumb(r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails) ?? fallback.thumbnail,
+    explicit,
+    isVideo: vt ? vt !== 'MUSIC_VIDEO_TYPE_ATV' : undefined,
+    extra: extraText || undefined,
+  };
+}
+
+/** 원본 런 배열 → RunInfo (헤더 해석용) */
+export function parseRawRuns(text: AnyNode): RunInfo {
+  return parseRuns(rawRuns(text));
+}

@@ -75,12 +75,49 @@ export const api = {
 };
 
 /** 재생목록 전체 트랙을 불러온다 (이어받기 토큰을 끝까지 따라감) */
-export async function loadAllTracks(detail: CollectionDetail, onPage?: (tracks: CollectionDetail['tracks']) => void) {
-  const tracks = [...detail.tracks];
-  let token = detail.continuation;
+/** 이어받기 중간에 실패하면 그때까지 받은 곡과 다시 시작할 토큰을 담아 던진다 */
+export class PartialLoadError extends Error {
+  constructor(
+    message: string,
+    public tracks: CollectionDetail['tracks'],
+    public token: string,
+  ) {
+    super(message);
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 이어받기 한 페이지: 서버가 잠깐 실패하는 경우가 있어 간격을 늘려 가며 다시 시도한다 */
+async function continuationWithRetry(token: string) {
+  let last: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await api.continuation(token);
+    } catch (err) {
+      last = err;
+      await sleep(700 * 2 ** attempt);
+    }
+  }
+  throw last;
+}
+
+/** 재생목록 전체 트랙을 불러온다 (이어받기 토큰을 끝까지 따라감). from으로 중간부터 이어서 받을 수 있다 */
+export async function loadAllTracks(
+  detail: CollectionDetail,
+  onPage?: (tracks: CollectionDetail['tracks']) => void,
+  from?: { tracks: CollectionDetail['tracks']; token: string },
+) {
+  const tracks = [...(from?.tracks ?? detail.tracks)];
+  let token = from?.token ?? detail.continuation;
   let guard = 0;
-  while (token && guard++ < 60) {
-    const page = await api.continuation(token);
+  while (token && guard++ < 200) {
+    let page;
+    try {
+      page = await continuationWithRetry(token);
+    } catch (err) {
+      throw new PartialLoadError((err as Error).message, tracks.slice(), token);
+    }
     tracks.push(...page.tracks);
     onPage?.(tracks.slice());
     token = page.continuation;

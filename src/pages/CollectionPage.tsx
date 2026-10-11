@@ -9,7 +9,7 @@ import { ErrorView, Loading } from '../components/PageState';
 import { Thumb } from '../components/Thumb';
 import { TrackList } from '../components/TrackRow';
 import { useAsync } from '../hooks/useAsync';
-import { api, loadAllTracks } from '../lib/api';
+import { api, loadAllTracks, PartialLoadError } from '../lib/api';
 import { formatTotal } from '../lib/format';
 import { LIKED_ID, isLocalId, useLibrary, type CollectionInfo } from '../store/library';
 import { LikedPage, LocalPlaylistPage } from './MyPlaylistPage';
@@ -53,29 +53,39 @@ function RemoteCollection({ kind, id }: { kind: 'playlist' | 'album' | 'radio'; 
   const fullRef = useRef<Promise<Track[]> | null>(null);
 
   // 이어받기 토큰이 있으면 나머지 트랙을 백그라운드로 불러온다
+  const [failed, setFailed] = useState<{ tracks: Track[]; token: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!data) return;
-    setTracks(data.tracks);
+    const resumeFrom = attempt > 0 ? failed ?? undefined : undefined;
+    if (!resumeFrom) setTracks(data.tracks);
+    setFailed(null);
     setComplete(!data.continuation);
     if (!data.continuation) {
       fullRef.current = Promise.resolve(data.tracks);
       return;
     }
     let alive = true;
-    fullRef.current = loadAllTracks(data, (t) => alive && setTracks(t))
+    fullRef.current = loadAllTracks(data, (t) => alive && setTracks(t), resumeFrom)
       .then((all) => {
         if (alive) setComplete(true);
         return all;
       })
       .catch((err) => {
-        toast(`일부 곡을 불러오지 못했습니다. ${(err as Error).message}`);
-        if (alive) setComplete(true);
-        return data.tracks;
+        // 중간에 끊기면 그때까지 받은 곡은 그대로 두고, 나머지를 다시 불러올 수 있게 한다
+        const partial = err instanceof PartialLoadError ? err : null;
+        if (alive) {
+          if (partial) setFailed({ tracks: partial.tracks, token: partial.token });
+          setComplete(true);
+          toast(`일부 곡을 불러오지 못했습니다 (${partial?.tracks.length ?? data.tracks.length}곡까지). ${(err as Error).message}`);
+        }
+        return partial?.tracks ?? data.tracks;
       });
     return () => {
       alive = false;
     };
-  }, [data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, attempt]);
 
   // 연 재생목록/앨범은 사이드바에 자동 등록 (이미 있으면 제목·썸네일 갱신)
   useEffect(() => {
@@ -96,6 +106,7 @@ function RemoteCollection({ kind, id }: { kind: 'playlist' | 'album' | 'radio'; 
       getAllTracks={() => fullRef.current ?? Promise.resolve(tracks ?? data.tracks)}
       path={path}
       registrable={data.kind !== 'radio'}
+      onResume={failed ? () => setAttempt((n) => n + 1) : undefined}
     />
   );
 }
@@ -117,9 +128,11 @@ interface ViewProps {
   getAllTracks: () => Promise<Track[]>;
   path: string;
   registrable: boolean;
+  /** 이어받기가 중간에 끊겼을 때 나머지를 다시 불러오기 */
+  onResume?: () => void;
 }
 
-function CollectionView({ detail, tracks, complete, getAllTracks, path, registrable }: ViewProps) {
+function CollectionView({ detail, tracks, complete, getAllTracks, path, registrable, onResume }: ViewProps) {
   const isAlbum = detail.kind === 'album';
   const playingHere = usePlayer((s) => s.source?.path === path && (s.status === 'playing' || s.status === 'buffering' || s.status === 'loading'));
   const isSourceHere = usePlayer((s) => s.source?.path === path && s.queue.length > 0);
@@ -194,6 +207,14 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, registra
           {!complete && (
             <div className="collection__more">
               <div className="spinner spinner--sm" /> 나머지 곡을 불러오는 중… ({tracks.length}곡)
+            </div>
+          )}
+          {complete && onResume && (
+            <div className="collection__more">
+              {tracks.length}곡까지 불러왔어요.
+              <button type="button" className="btn btn--outline" onClick={onResume}>
+                나머지 곡 불러오기
+              </button>
             </div>
           )}
           {isAlbum && total && <div className="collection__footer">{`${tracks.length}곡 • ${total}`}</div>}
