@@ -68,7 +68,7 @@ export const api = {
     videoId: string,
     q: { title?: string; artist?: string; album?: string; duration?: number; original?: OriginalSong } = {},
   ) => {
-    const p = new URLSearchParams({ v: '6' });
+    const p = new URLSearchParams({ v: '7' });
     if (q.title) p.set('title', q.title);
     if (q.artist) p.set('artist', q.artist);
     if (q.album) p.set('album', q.album);
