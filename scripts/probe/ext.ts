@@ -29,7 +29,7 @@ await step('spotify korean', async () => {
   }
 });
 
-for (const [title, artist, duration] of [['Hey Jude - Remastered 2015', 'The Beatles', 425], ['Dime Girl (Feat. NOWIMYOUNG)', 'YENA, NOWIMYOUNG', 148], ['밤편지', 'IU', 253]] as const) {
+for (const [title, artist, duration] of [['Hey Jude - Remastered 2015', 'The Beatles', 425], ['Dime Girl (Feat. NOWIMYOUNG)', 'YENA, NOWIMYOUNG', 148], ['밤편지', 'IU', 253], ['FALLEN ANGEL', 'JENNIE', 199], ['Lemon', 'Kenshi Yonezu', 255], ['Shape of You', 'Ed Sheeran', 233]] as const) {
   const m = await youtubeProvider.match({ title, artist, duration });
   log('  match', title, '=>', m ? `${m.videoId} ${m.title} / ${m.artists.map((a) => a.name).join(', ')} (${m.duration}s) video=${m.isVideo}` : 'NONE');
 }

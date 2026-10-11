@@ -328,28 +328,36 @@ async function match(q: MatchQuery): Promise<Track | null> {
     .split(/\s*,\s*/)
     .map((a) => a.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ''))
     .filter(Boolean);
-  const score = (t: Track, i: number) => {
+  const rate = (t: Track, i: number) => {
     const ks = normTitles(t.title, artistNamesOf(t));
     const exact = ks.some((k) => keys.includes(k));
     const similar = exact || ks.some((k) => keys.some((key) => k.length > 1 && key.length > 1 && (k.includes(key) || key.includes(k))));
-    if (!similar) return -Infinity;
+    if (!similar) return null;
     const names = artistNamesOf(t).toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
     const artistOk = !artistKeys.length || artistKeys.some((a) => names.includes(a) || (names.length > 1 && a.includes(names)));
     const diff = q.duration && t.duration ? Math.abs(q.duration - t.duration) : 0;
-    if (!artistOk && diff > 3) return -Infinity;
-    return (exact ? 30 : 10) + (artistOk ? 40 : 0) - Math.min(diff, 60) - i * 2 - (t.isVideo ? 15 : 0);
+    return { t, artistOk, diff, score: (exact ? 30 : 10) - Math.min(diff, 60) - i * 2 - (t.isVideo ? 15 : 0) };
   };
+  type Rated = NonNullable<ReturnType<typeof rate>>;
+  const best = (list: Rated[]) => list.sort((a, b) => b.score - a.score)[0]?.t ?? null;
+  const others: Rated[] = [];
+  // 같은 가수의 노래 → 같은 가수의 영상 → (그래도 없으면) 다른 사람이 올린 같은 곡 순서
   for (const filter of ['song', 'video'] as const) {
     const found = await search(`${title} ${q.artist.split(',')[0]}`.trim(), filter);
-    const best = found.tracks
+    const rated = found.tracks
       .slice(0, 10)
-      .map((t, i) => ({ t, s: score(t, i) }))
-      .filter((x) => x.s > -Infinity)
-      .sort((a, b) => b.s - a.s)[0];
-    if (best) return best.t;
+      .map(rate)
+      .filter((x): x is Rated => !!x);
+    const own = best(rated.filter((x) => x.artistOk));
+    if (own) return own;
+    // 커버·피아노 버전 같은 건 길이가 거의 같고 제목에 다른 버전 표시가 없을 때만
+    others.push(...rated.filter((x) => x.diff <= 3 && !VARIANT_TITLE.test(x.t.title) && !VARIANT_TITLE.test(artistNamesOf(x.t))));
   }
-  return null;
+  return best(others);
 }
+
+/** 다른 버전(커버·연주곡 등)으로 보이는 제목·채널 */
+const VARIANT_TITLE = /(cover|커버|カバー|piano|피아노|instrumental|inst\.|karaoke|노래방|remix|lofi|lo-fi|sped|slowed|nightcore|8d|acoustic|music box|orgel|오르골)/i;
 
 export const youtubeProvider: Provider = {
   match,
