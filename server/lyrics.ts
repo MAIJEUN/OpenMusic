@@ -282,14 +282,23 @@ async function fetchDirect(yt: Innertube, videoId: string, q: LyricsQuery): Prom
 }
 
 export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery): Promise<Lyrics | null> {
+  // 제목에 커버 표시가 있으면 원곡 찾기를 처음부터 같이 돌려 기다리는 시간을 줄인다
+  const looksCover = !!q.title && COVER_WORDS.test(q.title);
+  const origLyrics = async () => {
+    const orig = await originalSong(yt, q.title ?? '', q.artist).catch(() => null);
+    if (!orig) return null;
+    const ly = await fetchDirect(yt, orig.videoId, { title: orig.title, artist: orig.artist, duration: orig.duration });
+    return ly ? { orig, ly } : null;
+  };
+  const early = looksCover ? origLyrics() : null;
+
   const direct = await fetchDirect(yt, videoId, q);
   if (direct || !q.title) return direct;
 
   // 커버곡 등 가사를 못 찾으면 원곡을 찾아 그 가사를 보여준다
-  const orig = await originalSong(yt, q.title, q.artist).catch(() => null);
-  if (!orig) return null;
-  const ly = await fetchDirect(yt, orig.videoId, { title: orig.title, artist: orig.artist, duration: orig.duration });
-  if (!ly) return null;
+  const found = await (early ?? origLyrics());
+  if (!found) return null;
+  const { orig, ly } = found;
   const timingMatches = !!(q.duration && orig.duration && Math.abs(q.duration - orig.duration) <= 3);
   return {
     ...ly,
