@@ -4,7 +4,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useAsync } from '../hooks/useAsync';
-import { MdDragIndicator, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
+import { MdDragIndicator, MdMusicNote, MdRefresh, MdVisibilityOff, MdKeyboardArrowDown, MdMoreVert, MdPause, MdPlayArrow, MdPlaylistAdd, MdSkipNext, MdSkipPrevious } from 'react-icons/md';
 import { Link } from 'react-router-dom';
 import type { Counterpart, LyricLine, LyricWord, Lyrics, Track } from '../../shared/types';
 import { api } from '../lib/api';
@@ -12,7 +12,7 @@ import { skipSegments } from '../lib/sponsorblock';
 import { fetchCounterpart, mapTime } from '../player/useAudioVersion';
 import { artistNames, formatTime } from '../lib/format';
 import { player, usePlayer, type QueueItem } from '../store/player';
-import { useUi, type NowPlayingTab } from '../store/ui';
+import { useUi, type LyricsOverride, type MenuState, type NowPlayingTab } from '../store/ui';
 import { Equalizer } from './Equalizer';
 import { IconButton } from './IconButton';
 import { openMenuFromEvent, saveTracksTo, trackMenuItems } from './menus';
@@ -312,20 +312,41 @@ function LyricsPanel({ track }: { track: Track }) {
         ? { videoId: cp.other.videoId, duration: cp.other.duration }
         : null;
 
+  // 영상별 가사 설정 (숨기기 / 직접 고른 원곡)
+  const override = useUi((s) => s.lyricsOverrides[track.videoId]);
+  const setOverride = (o: LyricsOverride | null) => useUi.getState().setLyricsOverride(track.videoId, o);
   const { loading, data } = useAsync<Lyrics | null>(
     () =>
-      cpState.loading
-        ? new Promise<Lyrics | null>(() => {})
+      cpState.loading || override?.hidden
+        ? cpState.loading
+          ? new Promise<Lyrics | null>(() => {})
+          : Promise.resolve(null)
         : api
             .lyrics(song?.videoId ?? playingId, {
               title: track.title,
               artist: artistNames(track.artists),
               album: track.album?.name,
               duration: Math.round(song?.duration || playDuration || track.duration || 0) || undefined,
+              original: override?.original,
             })
             .catch(() => null),
-    [track.videoId, cpState.loading],
+    [track.videoId, cpState.loading, override?.hidden, override?.original?.videoId],
   );
+  // 가사가 다른 곡으로 잡혔을 때: 다른 원곡 후보 고르기 / 이 영상에서 숨기기
+  const openFixMenu = (e: MouseEvent) => {
+    const items: MenuState['items'] = [];
+    for (const alt of data?.original?.alternatives ?? []) {
+      items.push({
+        label: `${alt.artist} - ${alt.title}${alt.duration ? ` (${formatTime(alt.duration)})` : ''}`,
+        icon: <MdMusicNote />,
+        onSelect: () => setOverride({ original: alt }),
+      });
+    }
+    if (override?.original) items.push({ label: '자동으로 찾은 가사로 되돌리기', icon: <MdRefresh />, onSelect: () => setOverride(null) });
+    if (items.length) items.push('divider');
+    items.push({ label: '이 영상에서 가사 숨기기', icon: <MdVisibilityOff />, onSelect: () => setOverride({ hidden: true }) });
+    openMenuFromEvent(e, items);
+  };
   const [mode, setMode] = useState<'synced' | 'plain'>('synced');
 
   // 자동 싱크: 지금 재생 중인 영상의 시간으로 가사 시간을 옮긴다
@@ -365,6 +386,15 @@ function LyricsPanel({ track }: { track: Track }) {
   const setOffset = (v: number) => useUi.getState().setLyricsOffset(playingId, Math.round(v * 10) / 10);
 
   if (loading || cpState.loading) return <div className="panel-spinner"><div className="spinner" /></div>;
+  if (override?.hidden)
+    return (
+      <div className="panel-empty">
+        이 영상에서는 가사를 숨겼어요
+        <button type="button" className="btn btn--outline lyrics__restore" onClick={() => setOverride(null)}>
+          가사 다시 보기
+        </button>
+      </div>
+    );
   if (!data) return <div className="panel-empty">가사를 사용할 수 없습니다</div>;
   const synced = !!auto && mode === 'synced';
 
@@ -411,6 +441,9 @@ function LyricsPanel({ track }: { track: Track }) {
         </p>
       )}
       {data.source && <p className="lyrics__source">{data.source}</p>}
+      <button type="button" className="lyrics__fix" onClick={openFixMenu}>
+        가사가 맞지 않나요?
+      </button>
     </div>
   );
 }

@@ -59,6 +59,14 @@ export interface SearchResult {
   tracks: Track[];
 }
 
+/** 커버곡의 원곡 후보 */
+export interface OriginalSong {
+  videoId: string;
+  title: string;
+  artist: string;
+  duration?: number;
+}
+
 export interface Lyrics {
   text: string;
   source?: string;
@@ -68,10 +76,13 @@ export interface Lyrics {
   duration?: number;
   /** 커버곡 등이라 원곡 가사를 대신 보여줄 때의 원곡 정보 */
   original?: {
+    videoId?: string;
     title: string;
     artist: string;
     /** 원곡과 길이가 비슷해서 시간 동기화 가사를 그대로 써도 될 것 같은지 */
     timingMatches: boolean;
+    /** 다른 원곡 후보 (가사가 다른 곡으로 잡혔을 때 사용자가 고를 수 있게) */
+    alternatives?: OriginalSong[];
   };
 }
 

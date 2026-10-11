@@ -83,8 +83,12 @@ export function createApp(provider: Provider, config: ServerConfig) {
     const id = need(c.req.param('id'), 'id');
     const str = (k: string) => c.req.query(k)?.trim().slice(0, 200) || undefined;
     const duration = Number(c.req.query('duration')) || undefined;
-    const q = { title: str('title'), artist: str('artist'), album: str('album'), duration };
-    const lyrics = await cached(`lyrics:${id}`, 60 * MIN, () => provider.lyrics(id, q));
+    const origId = str('orig');
+    const original = origId
+      ? { videoId: origId, title: str('origTitle') ?? '', artist: str('origArtist') ?? '', duration: Number(c.req.query('origDur')) || undefined }
+      : undefined;
+    const q = { title: str('title'), artist: str('artist'), album: str('album'), duration, original };
+    const lyrics = await cached(`lyrics:${id}:${origId ?? ''}`, 60 * MIN, () => provider.lyrics(id, q));
     return c.json(lyrics);
   });
 
