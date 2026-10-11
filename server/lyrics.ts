@@ -234,6 +234,13 @@ async function originalSongs(yt: Innertube, title: string, coverArtist?: string)
   const keys = cands.map(normKey).filter((k) => k.length > 1);
   if (!keys.length) return [];
   const coverKey = coverArtist ? normKey(coverArtist) : '';
+  // "KING / Kanaria"처럼 제목에 원곡 가수가 들어 있는 경우가 많다
+  const titleKey = normKey(stripCover(title));
+  const namedInTitle = (artist: string) =>
+    artist.split(/\s*[,&]\s*/).some((a) => {
+      const k = normKey(a);
+      return k.length > 1 && titleKey.includes(k);
+    });
   const found: { videoId: string; title: string; artist: string; duration?: number; score: number }[] = [];
   const seen = new Set<string>();
   // 꾸밈말 없는 제목으로 먼저 검색해야 원곡이 맨 위에 나온다
@@ -251,10 +258,12 @@ async function originalSongs(yt: Innertube, title: string, coverArtist?: string)
       if (!titleOk || (coverKey && normKey(artist).includes(coverKey))) return;
       seen.add(t.videoId);
       // 검색 순위가 높고, 제목이 정확히 같고, 다른 버전 표시가 없을수록 원곡
-      const score = qi * 100 + rank + (exact ? 0 : 20) + (VARIANT.test(t.title) ? 50 : 0);
+      const score = qi * 100 + rank + (exact ? 0 : 20) + (VARIANT.test(t.title) ? 50 : 0) - (namedInTitle(artist) ? 150 : 0);
       found.push({ videoId: t.videoId, title: t.title, artist, duration: t.duration, score });
     });
-    if (found.some((f) => f.score < 20)) break;
+    // 제목에 원곡 가수로 보이는 이름이 더 있으면(가수 - 제목) 두 번째 검색까지 해 본다
+    const hasMore = cands.length > 1;
+    if (found.some((f) => f.score < 0) || (!hasMore && found.some((f) => f.score < 20))) break;
   }
   return found.sort((a, b) => a.score - b.score).slice(0, 3);
 }
