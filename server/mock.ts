@@ -184,6 +184,18 @@ export const mockProvider: Provider = {
   async lyrics(videoId) {
     await delay();
     if (videoId.endsWith('3')) return null;
+    // 끝자리 5: 커버곡 → 원곡 가사 (길이가 달라 전체 가사로 시작)
+    if (videoId.endsWith('5')) {
+      const lines = LYRICS.split('\n')
+        .filter((l) => l.trim() && !l.startsWith('('))
+        .map((text, i) => ({ start: 6 + i * 4, end: 9.5 + i * 4, text }));
+      return {
+        text: LYRICS,
+        source: '원곡 가사: 테스트 가수 - 원곡 · 출처: OpenMusic Mock Lyrics',
+        synced: lines,
+        original: { title: '원곡', artist: '테스트 가수', timingMatches: false },
+      };
+    }
     // 끝자리 1·2: 시간 동기화 가사 (6초부터 4초 간격)
     if (/[12]s?$/.test(videoId)) {
       const lines = LYRICS.split('\n')
