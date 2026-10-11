@@ -327,21 +327,18 @@ function LyricsPanel({ track }: { track: Track }) {
     [track.videoId, cpState.loading],
   );
   const [mode, setMode] = useState<'synced' | 'plain'>('synced');
-  // 커버곡처럼 원곡 가사를 빌려 왔고 길이도 다르면 박자가 안 맞을 가능성이 커서 전체 가사로 시작
-  const coverMismatch = !!data?.original && !data.original.timingMatches;
-  useEffect(() => {
-    if (coverMismatch) setMode('plain');
-  }, [coverMismatch]);
 
   // 자동 싱크: 지금 재생 중인 영상의 시간으로 가사 시간을 옮긴다
   const sponsor = useAsync(() => skipSegments(playingId), [playingId]);
   const auto = useMemo(() => {
     const lines = data?.synced;
     if (!lines?.length) return null;
+    // 커버곡에 원곡 가사를 쓰는 경우: 가사 시간은 원곡 기준이라 이 영상의 노래/동영상 짝 정보와는 무관하다
+    const borrowed = !!data?.original;
     // 1) 노래를 틀고 있으면 그대로
-    if (song && playingId === song.videoId) return { lines, how: '' };
+    if (!borrowed && song && playingId === song.videoId) return { lines, how: '' };
     // 2) YouTube Music의 노래 ↔ 뮤직비디오 시간 대응표
-    if (cp && song && cp.segments.length) {
+    if (!borrowed && cp && song && cp.segments.length) {
       const fromSelf = song.videoId === track.videoId;
       const shift = (t: number) => mapTime(cp, t, fromSelf);
       return {
@@ -354,7 +351,7 @@ function LyricsPanel({ track }: { track: Track }) {
     const shiftAll = (d: number, how: string) => ({ lines: lines.map((l) => shiftLine(l, (x) => x + d)), how });
     if (intro) return shiftAll(intro.end, '인트로 길이');
     // 4) 노래 길이와 뮤직비디오의 '노래가 끝나는 지점'(아웃트로 시작) 차이 = 인트로 길이로 본다
-    const songLen = song?.duration ?? data?.duration;
+    const songLen = borrowed ? data?.duration : (song?.duration ?? data?.duration);
     const outro = sponsor.data?.find((g) => g.start > 10 && g.end >= playDuration - 1.5);
     if (songLen && outro) {
       const guess = outro.start - songLen;

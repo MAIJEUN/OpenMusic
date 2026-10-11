@@ -225,27 +225,38 @@ export function stripCover(title: string): string {
 
 const normKey = (s: string) => s.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
 
-/** 커버곡 제목으로 원곡(YouTube Music의 노래)을 찾는다 */
-async function originalSong(yt: Innertube, title: string, coverArtist?: string) {
+/** 다른 버전(리믹스·반주·커버·'From 애니' 등)으로 보이는 제목 — 원곡 후보에서 뒤로 미룬다 */
+const VARIANT = /(remix|instrumental|inst\.?|karaoke|off\s*vocal|cover|カバー|커버|翻唱|ver\.|version|from\s|style|acoustic|piano|lofi|lo-fi|sped|slowed|nightcore|8d|feat\.?\s)/i;
+
+/** 커버곡 제목으로 원곡 후보(YouTube Music의 노래)를 찾는다. 앞쪽일수록 원곡일 가능성이 크다 */
+async function originalSongs(yt: Innertube, title: string, coverArtist?: string) {
   const cands = titleCandidates(stripCover(title), coverArtist);
   const keys = cands.map(normKey).filter((k) => k.length > 1);
-  if (!keys.length) return null;
+  if (!keys.length) return [];
   const coverKey = coverArtist ? normKey(coverArtist) : '';
-  for (const query of [...new Set([cands[cands.length - 1], cands[0]])]) {
+  const found: { videoId: string; title: string; artist: string; duration?: number; score: number }[] = [];
+  const seen = new Set<string>();
+  // 꾸밈말 없는 제목으로 먼저 검색해야 원곡이 맨 위에 나온다
+  for (const [qi, query] of [...new Set([cands[0], cands[cands.length - 1]])].entries()) {
     const res: AnyNode = await yt.music.search(query, { type: 'song' });
     const items: AnyNode[] = Array.from(res.contents ?? []).flatMap((s: AnyNode) => Array.from(s?.contents ?? []));
-    for (const it of items) {
+    items.forEach((it, rank) => {
       const t = trackFromListItem(it);
-      if (!t) continue;
+      if (!t || seen.has(t.videoId)) return;
       const k = normKey(t.title);
-      const titleOk = keys.some((key) => k === key || k.includes(key) || key.includes(k));
+      const exact = keys.includes(k);
+      const titleOk = exact || keys.some((key) => k.includes(key) || key.includes(k));
       const artist = t.artists.map((a) => a.name).join(', ');
       // 커버한 사람 본인의 노래는 원곡이 아니다
-      if (!titleOk || (coverKey && normKey(artist).includes(coverKey))) continue;
-      return { videoId: t.videoId, title: t.title, artist, duration: t.duration };
-    }
+      if (!titleOk || (coverKey && normKey(artist).includes(coverKey))) return;
+      seen.add(t.videoId);
+      // 검색 순위가 높고, 제목이 정확히 같고, 다른 버전 표시가 없을수록 원곡
+      const score = qi * 100 + rank + (exact ? 0 : 20) + (VARIANT.test(t.title) ? 50 : 0);
+      found.push({ videoId: t.videoId, title: t.title, artist, duration: t.duration, score });
+    });
+    if (found.some((f) => f.score < 20)) break;
   }
-  return null;
+  return found.sort((a, b) => a.score - b.score).slice(0, 3);
 }
 
 /** 이 영상 자체의 가사 (YouTube Music · LRCLIB · NetEase) */
@@ -285,10 +296,13 @@ export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery
   // 제목에 커버 표시가 있으면 원곡 찾기를 처음부터 같이 돌려 기다리는 시간을 줄인다
   const looksCover = !!q.title && COVER_WORDS.test(q.title);
   const origLyrics = async () => {
-    const orig = await originalSong(yt, q.title ?? '', q.artist).catch(() => null);
-    if (!orig) return null;
-    const ly = await fetchDirect(yt, orig.videoId, { title: orig.title, artist: orig.artist, duration: orig.duration });
-    return ly ? { orig, ly } : null;
+    const origs = await originalSongs(yt, q.title ?? '', q.artist).catch(() => []);
+    // 첫 후보에 가사가 없으면 다음 후보로 (같은 제목의 다른 사람 버전일 수 있다)
+    for (const orig of origs) {
+      const ly = await fetchDirect(yt, orig.videoId, { title: orig.title, artist: orig.artist, duration: orig.duration }).catch(() => null);
+      if (ly) return { orig, ly };
+    }
+    return null;
   };
   const early = looksCover ? origLyrics() : null;
 
@@ -302,6 +316,8 @@ export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery
   const timingMatches = !!(q.duration && orig.duration && Math.abs(q.duration - orig.duration) <= 3);
   return {
     ...ly,
+    // 가사 시간이 맞춰진 길이 = 원곡 길이 (자동 싱크 계산에 쓴다)
+    duration: ly.duration ?? orig.duration,
     source: [`원곡 가사: ${orig.artist} - ${orig.title}`, ly.source].filter(Boolean).join(' · '),
     original: { title: orig.title, artist: orig.artist, timingMatches },
   };
