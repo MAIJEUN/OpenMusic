@@ -15,7 +15,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx tsx scripts/probe/ext.ts 2>&1 | grep PROBE
       - run: npm run build
       - run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
       - run: |
@@ -24,6 +23,7 @@ jobs:
           sleep 6
           timeout 180 node scripts/probe/browser.mjs 2>&1 | grep PROBE || true
           kill $SERVER || true
+      - run: npx tsx scripts/probe/ext.ts 2>&1 | grep PROBE
       - uses: actions/upload-artifact@v4
         if: always()
         with:

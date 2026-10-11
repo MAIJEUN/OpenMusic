@@ -5,6 +5,8 @@ const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gestur
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
+const toasts = [];
+setInterval(() => page.locator('.toast').allTextContents().then((t) => t.forEach((x) => !toasts.includes(x) && toasts.push(x))).catch(() => {}), 500);
 const state = () => page.evaluate(() => {
   const s = JSON.parse(localStorage.getItem('om-player') || '{}').state;
   return { id: s?.queue?.[s.index]?.track?.videoId, pos: document.querySelector('.player-bar')?.textContent?.match(/\d+:\d+ \/ \d+:\d+/)?.[0] };
@@ -36,5 +38,17 @@ for (let i = 0; i < 3; i++) {
 await page.click('.player-bar__left [aria-label="다음 곡"]');
 await page.waitForTimeout(6000);
 console.log('PROBE sp next', JSON.stringify(await state()));
+console.log('PROBE toasts', JSON.stringify(toasts));
+// 비교: 일반 YouTube Music 곡
+toasts.length = 0;
+await page.goto(B + '/search?q=' + encodeURIComponent('Ed Sheeran Shape of You'));
+await page.waitForSelector('.track-row', { timeout: 30000 });
+await page.locator('.track-row').first().dblclick();
+for (let i = 0; i < 3; i++) {
+  await page.waitForTimeout(4000);
+  console.log('PROBE yt', JSON.stringify(await state()));
+}
+console.log('PROBE yt toasts', JSON.stringify(toasts));
 console.log('PROBE errors', JSON.stringify(errors));
 await browser.close();
+process.exit(0);
