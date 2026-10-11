@@ -78,6 +78,13 @@ interface PlayerState {
 
 let engine: Engine | null = null;
 
+/**
+ * 사용자가 직접 멈췄는지. 모바일 브라우저는 화면이 꺼지거나 다른 앱으로 가면 영상을 멈추는데,
+ * 그런 '저절로 멈춤'과 사용자가 누른 일시정지를 구분해서 저절로 멈춘 경우만 다시 재생한다.
+ */
+let userPaused = false;
+export const isUserPaused = () => userPaused;
+
 /** 곡 → 실제로 틀 영상. 노래/동영상 설정에 따라 바깥(useAudioVersion)에서 바꿔 끼운다 */
 export type SourceResolver = (track: Track) => { videoId: string; duration?: number };
 let resolveSource: SourceResolver = (t) => ({ videoId: t.videoId, duration: t.duration });
@@ -130,6 +137,7 @@ export const usePlayer = create<PlayerState>()(
           return;
         }
         cancelPendingSeek();
+        if (autoplay) userPaused = false;
         const src = resolveSource(item.track);
         const dur = src.duration ?? item.track.duration;
         set({ status: autoplay ? 'loading' : 'paused', position: start, duration: dur ?? 0, playingId: src.videoId });
@@ -273,6 +281,7 @@ export const usePlayer = create<PlayerState>()(
         play: () => {
           const s = get();
           if (!s.queue.length) return;
+          userPaused = false;
           if (s.status === 'idle' || s.status === 'ended') {
             // 새로고침 후 복원된 상태이거나 끝난 상태 → 다시 로드
             loadCurrent(true, s.status === 'ended' ? 0 : s.position);
@@ -281,7 +290,10 @@ export const usePlayer = create<PlayerState>()(
           engine?.play();
         },
 
-        pause: () => engine?.pause(),
+        pause: () => {
+          userPaused = true;
+          engine?.pause();
+        },
 
         next: () => {
           const s = get();

@@ -7,6 +7,7 @@ import type { ArtistRef, CollectionDetail, Counterpart, ContinuationPage, Lyrics
 import { stripVL } from '../shared/links.js';
 import { fetchLyrics, titleCandidates, type LyricsQuery } from './lyrics.js';
 import { findAll } from './json.js';
+import { rawContinuation, rawPlaylist } from './rawPlaylist.js';
 import { bestThumb, parseDuration, parseRuns, runsOf, textOf, trackFromListItem, trackFromPanelVideo, type TrackFallback } from './normalize.js';
 import type { Provider } from './provider.js';
 
@@ -96,6 +97,13 @@ function tracksFrom(items: AnyNode, fallback: TrackFallback = {}): Track[] {
 }
 
 async function getPlaylist(id: string): Promise<CollectionDetail> {
+  // 가벼운 원본 JSON 해석을 먼저 시도하고, 안 되면 youtubei.js 파서로
+  try {
+    const raw = await rawPlaylist(await yt(), id);
+    if (raw) return raw;
+  } catch {
+    /* 아래 기존 경로로 */
+  }
   const music = (await yt()).music;
   const playlist = await music.getPlaylist(id);
   const h = parseHeader(playlist.header);
@@ -119,6 +127,12 @@ async function getPlaylist(id: string): Promise<CollectionDetail> {
 
 async function getContinuation(token: string): Promise<ContinuationPage> {
   const session = await yt();
+  try {
+    const raw = await rawContinuation(session, token);
+    if (raw) return raw;
+  } catch {
+    /* 아래 기존 경로로 */
+  }
   const response = await session.actions.execute('/browse', { client: 'YTMUSIC', continuation: token });
   const next = new YTMusic.Playlist(response, session.actions);
   return { tracks: tracksFrom(next.items), continuation: continuationToken(next) };
