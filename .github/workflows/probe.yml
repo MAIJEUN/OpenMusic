@@ -17,8 +17,17 @@ jobs:
       - run: npm ci
       - run: npx tsx scripts/probe/ext.ts 2>&1 | grep PROBE
       - run: npm run build
-      - run: (npx tsx server/node.ts > server.log 2>&1 &) && sleep 5
       - run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
-      - run: node scripts/probe/browser.mjs 2>&1 | grep PROBE
+      - run: |
+          npx tsx server/node.ts > server.log 2>&1 &
+          SERVER=$!
+          sleep 6
+          timeout 180 node scripts/probe/browser.mjs 2>&1 | grep PROBE || true
+          kill $SERVER || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots
+          path: probe-*.png
       - run: tail -30 server.log
         if: always()
