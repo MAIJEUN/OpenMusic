@@ -7,6 +7,7 @@ import { toast, useUi } from '../store/ui';
 import { DualEngine, FakeEngine, YouTubeEngine, type Engine, type EngineEvents } from './engine';
 import { useSmartTransitions } from './useSmartTransitions';
 import { useAudioVersion } from './useAudioVersion';
+import { pausedInBackground, useBackgroundPlayback } from './useBackgroundPlayback';
 import { anchorPause, anchorPlay } from './mediaAnchor';
 
 const HIDDEN: Partial<CSSStyleDeclaration> = {
@@ -95,6 +96,7 @@ export function PlayerHost() {
   useDocumentTitle();
   useSmartTransitions();
   useAudioVersion();
+  useBackgroundPlayback();
 
   return <div ref={hostRef} className="player-host" aria-hidden />;
 }
@@ -156,7 +158,8 @@ function useMediaSession() {
     const active = status === 'playing' || status === 'buffering' || status === 'loading';
     navigator.mediaSession.playbackState = active ? 'playing' : status === 'idle' ? 'none' : 'paused';
     // 시스템 미디어 컨트롤이 YouTube iframe이 아니라 이 페이지에 연결되도록 무음 오디오를 함께 재생
-    if (active) anchorPlay();
+    // 백그라운드에서 저절로 멈춘 경우에는 무음 오디오를 유지해서 페이지가 미디어 재생 중으로 남게 한다
+    if (active || pausedInBackground()) anchorPlay();
     else anchorPause();
   }, [status]);
 

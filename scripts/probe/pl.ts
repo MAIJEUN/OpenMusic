@@ -1,34 +1,20 @@
-// 임시 진단: 큰 재생목록 이어받기
-import { Innertube } from 'youtubei.js';
+// 임시 진단: 재생목록 페이지 처리 CPU 시간
 import { youtubeProvider } from '../../server/youtube.ts';
-const yt = await Innertube.create({ lang: 'ko', location: 'KR', retrieve_player: false, generate_session_locally: true });
-const res: any = await yt.music.search('kpop 1000 songs playlist', { type: 'playlist' });
-const items: any[] = (res.contents ?? []).flatMap((s: any) => Array.from(s.contents ?? []));
-const ids: string[] = [];
-for (const it of items.slice(0, 8)) {
-  const id = it.id ?? it.endpoint?.payload?.browseId;
-  console.log(`PROBE cand ${id} ${it.title?.toString?.() ?? it.title} | ${it.subtitle?.toString?.() ?? ''} | ${it.item_count ?? ''}`);
-  if (id) ids.push(String(id).replace(/^VL/, ''));
-}
-for (const id of ids.slice(0, 3)) {
-  try {
-    const d = await youtubeProvider.playlist(id);
-    let total = d.tracks.length;
-    let token = d.continuation;
-    console.log(`PROBE ${id} "${d.title}" sub="${d.secondSubtitle ?? d.subtitle}" first=${d.tracks.length} cont=${!!token}`);
-    let pages = 0;
-    while (token && pages++ < 20) {
-      const p = await youtubeProvider.continuation(token);
-      total += p.tracks.length;
-      console.log(`PROBE    page${pages} +${p.tracks.length} total=${total} next=${!!p.continuation}`);
-      token = p.continuation;
-    }
-  } catch (e) {
-    console.log(`PROBE ${id} ERROR ${(e as Error).message.slice(0, 300)}`);
-  }
-}
-// 원본 응답에서 첫 페이지 항목 수와 이어받기 정보
-if (ids[0]) {
-  const pl: any = await yt.music.getPlaylist(ids[0]);
-  console.log(`PROBE raw items=${pl.items?.length} types=${[...new Set((pl.items ?? []).map((i: any) => i.type))]} has_continuation=${pl.has_continuation}`);
+const cpu = async <T>(fn: () => Promise<T>) => {
+  const c0 = process.cpuUsage();
+  const t0 = Date.now();
+  const r = await fn();
+  const c = process.cpuUsage(c0);
+  return { r, cpuMs: Math.round((c.user + c.system) / 1000), wallMs: Date.now() - t0 };
+};
+// 첫 호출은 세션 생성 포함이라 따로 잰다
+const warm = await cpu(() => youtubeProvider.playlist('PL2HEDIx6Li8hDUxaa-0cLX2tNrx_brV7G'));
+console.log(`PROBE first playlist cpu=${warm.cpuMs}ms wall=${warm.wallMs}ms tracks=${warm.r.tracks.length}`);
+const again = await cpu(() => youtubeProvider.playlist('PL21a_Jsowir3gv-51Be5BQzWl7nxrNeE9'));
+console.log(`PROBE playlist(warm) cpu=${again.cpuMs}ms wall=${again.wallMs}ms`);
+let token = again.r.continuation;
+for (let i = 0; i < 4 && token; i++) {
+  const p = await cpu(() => youtubeProvider.continuation(token!));
+  console.log(`PROBE continuation cpu=${p.cpuMs}ms wall=${p.wallMs}ms +${p.r.tracks.length}`);
+  token = p.r.continuation;
 }
