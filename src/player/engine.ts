@@ -1,6 +1,8 @@
 /**
  * 실제 재생을 담당하는 엔진.
  * - YouTubeEngine: YouTube IFrame Player API (정식 임베드 플레이어)
+ * - SoundCloudEngine: SoundCloud 임베드 플레이어 (Widget API)
+ * - SwitchEngine: 곡에 따라 YouTube/SoundCloud 플레이어를 골라 쓴다
  * - FakeEngine: 목 데이터 모드에서 타이머로 재생을 흉내낸다
  */
 
@@ -191,6 +193,273 @@ function mapState(code: number): EngineState {
       return 'cued';
     default:
       return 'unstarted';
+  }
+}
+
+/* ------------------------------------------------------------------ */
+
+/* SoundCloud 임베드 플레이어(Widget API) — https://developers.soundcloud.com/docs/api/html5-widget */
+interface ScWidget {
+  bind(event: string, cb: (e?: { currentPosition?: number }) => void): void;
+  unbind(event: string): void;
+  load(url: string, opts: Record<string, unknown> & { callback?: () => void }): void;
+  play(): void;
+  pause(): void;
+  seekTo(ms: number): void;
+  setVolume(v: number): void;
+  getDuration(cb: (ms: number) => void): void;
+}
+interface ScApi {
+  Widget: ((el: HTMLIFrameElement) => ScWidget) & {
+    Events: Record<'READY' | 'PLAY' | 'PAUSE' | 'FINISH' | 'PLAY_PROGRESS' | 'ERROR', string>;
+  };
+}
+declare global {
+  interface Window {
+    SC?: ScApi;
+  }
+}
+
+let scApiPromise: Promise<ScApi> | null = null;
+function loadScApi(): Promise<ScApi> {
+  if (window.SC?.Widget) return Promise.resolve(window.SC);
+  if (scApiPromise) return scApiPromise;
+  scApiPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://w.soundcloud.com/player/api.js';
+    script.async = true;
+    script.onload = () => (window.SC ? resolve(window.SC) : reject(new Error('SoundCloud 플레이어를 불러오지 못했습니다.')));
+    script.onerror = () => {
+      scApiPromise = null;
+      reject(new Error('SoundCloud 플레이어 스크립트를 불러오지 못했습니다.'));
+    };
+    document.head.appendChild(script);
+  });
+  return scApiPromise;
+}
+
+const scTrackUrl = (videoId: string) => `https://api.soundcloud.com/tracks/${videoId.replace(/^sc:/, '')}`;
+const SC_PARAMS = 'auto_play=false&visual=true&show_artwork=true&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false&buying=false&sharing=false&download=false';
+
+/** SoundCloud 곡 재생 (공식 임베드 플레이어) */
+export class SoundCloudEngine implements Engine {
+  private el: HTMLElement | null = null;
+  private widget: ScWidget | null = null;
+  private iframe: HTMLIFrameElement | null = null;
+  private loading: { videoId: string; opts: LoadOptions } | null = null;
+  private volume = 100;
+  private muted = false;
+  private time = 0;
+  /** 마지막 재생 위치를 받은 시각 (그 사이 시간은 직접 흘려서 가사가 부드럽게 움직이게) */
+  private timeAt = 0;
+  private playing = false;
+  private duration = 0;
+  /** 로드 직후 처음 재생될 때 옮겨 갈 위치(초) */
+  private startAt = 0;
+  /** 로드마다 늘어나는 번호 (이전 곡의 늦은 이벤트 무시) */
+  private gen = 0;
+
+  constructor(private events: EngineEvents = noopEvents) {}
+
+  mount(el: HTMLElement) {
+    this.el = el;
+  }
+
+  private bindAll(SC: ScApi, w: ScWidget, gen: number) {
+    const E = SC.Widget.Events;
+    for (const ev of Object.values(E)) w.unbind(ev);
+    const live = () => gen === this.gen;
+    w.bind(E.PLAY, () => {
+      if (!live()) return;
+      this.playing = true;
+      this.timeAt = performance.now();
+      if (this.startAt > 0) {
+        w.seekTo(this.startAt * 1000);
+        this.time = this.startAt;
+        this.startAt = 0;
+      }
+      w.getDuration((ms) => live() && ms > 0 && (this.duration = ms / 1000));
+      this.events.onState('playing');
+    });
+    w.bind(E.PAUSE, () => {
+      if (!live()) return;
+      this.time = this.getTime();
+      this.playing = false;
+      this.events.onState('paused');
+    });
+    w.bind(E.FINISH, () => {
+      if (!live()) return;
+      this.playing = false;
+      this.time = this.duration;
+      this.events.onState('ended');
+    });
+    w.bind(E.PLAY_PROGRESS, (e) => {
+      if (!live() || typeof e?.currentPosition !== 'number') return;
+      this.time = e.currentPosition / 1000;
+      this.timeAt = performance.now();
+    });
+    w.bind(E.ERROR, () => live() && this.events.onError(100));
+  }
+
+  private applyVolume() {
+    this.widget?.setVolume(this.muted ? 0 : this.volume);
+  }
+
+  /** 불러온 곡이 준비되면 */
+  private onLoaded(SC: ScApi, gen: number, autoplay: boolean) {
+    if (gen !== this.gen || !this.widget) return;
+    this.bindAll(SC, this.widget, gen);
+    this.applyVolume();
+    this.widget.getDuration((ms) => gen === this.gen && ms > 0 && (this.duration = ms / 1000));
+    if (autoplay) this.widget.play();
+    else this.events.onState('cued');
+  }
+
+  load(videoId: string, opts: LoadOptions) {
+    const gen = ++this.gen;
+    this.time = opts.start ?? 0;
+    this.timeAt = performance.now();
+    this.startAt = opts.start ?? 0;
+    this.playing = false;
+    this.duration = opts.durationHint ?? 0;
+    this.loading = { videoId, opts };
+    this.events.onState(opts.autoplay ? 'buffering' : 'cued');
+    loadScApi()
+      .then((SC) => {
+        if (gen !== this.gen || !this.el) return;
+        const url = scTrackUrl(videoId);
+        if (!this.widget) {
+          // 첫 곡: 그 곡 주소로 임베드 플레이어를 만든다
+          const iframe = document.createElement('iframe');
+          iframe.allow = 'autoplay; encrypted-media';
+          iframe.title = 'SoundCloud';
+          iframe.style.cssText = 'width:100%;height:100%;border:0;display:block';
+          iframe.src = `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&${SC_PARAMS}`;
+          this.el.appendChild(iframe);
+          this.iframe = iframe;
+          const w = SC.Widget(iframe);
+          this.widget = w;
+          w.bind(SC.Widget.Events.READY, () => {
+            w.unbind(SC.Widget.Events.READY);
+            this.onLoaded(SC, this.gen, this.loading?.opts.autoplay ?? false);
+          });
+        } else {
+          this.widget.load(url, {
+            auto_play: false,
+            visual: true,
+            show_artwork: true,
+            hide_related: true,
+            show_comments: false,
+            show_teaser: false,
+            callback: () => this.onLoaded(SC, gen, opts.autoplay),
+          });
+        }
+      })
+      .catch((err: Error) => gen === this.gen && this.events.onFatal(err.message));
+  }
+
+  play() {
+    this.widget?.play();
+  }
+  pause() {
+    this.widget?.pause();
+  }
+  seek(seconds: number) {
+    this.time = Math.max(0, seconds);
+    this.timeAt = performance.now();
+    if (!this.playing) this.startAt = this.time;
+    this.widget?.seekTo(this.time * 1000);
+  }
+  setVolume(volume: number) {
+    this.volume = volume;
+    this.applyVolume();
+  }
+  setMuted(muted: boolean) {
+    this.muted = muted;
+    this.applyVolume();
+  }
+  getTime() {
+    if (!this.playing) return this.time;
+    const t = this.time + (performance.now() - this.timeAt) / 1000;
+    return this.duration ? Math.min(t, this.duration) : t;
+  }
+  getDuration() {
+    return this.duration;
+  }
+  /** iframe 보이기/숨기기 (YouTube 곡을 틀 때는 숨긴다) */
+  get frame() {
+    return this.iframe;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * 곡 ID에 따라 YouTube 플레이어와 SoundCloud 플레이어 중 하나로 트는 엔진.
+ * 지금 쓰는 플레이어의 이벤트만 바깥으로 전달한다.
+ */
+export class SwitchEngine implements Engine {
+  private yt: Engine;
+  private sc: SoundCloudEngine;
+  private useSc = false;
+  private boxes: HTMLElement[] = [];
+
+  constructor(createYouTube: (events: EngineEvents) => Engine, events: EngineEvents = noopEvents) {
+    const gate = (sc: boolean): EngineEvents => ({
+      onState: (st) => this.useSc === sc && events.onState(st),
+      onError: (c) => this.useSc === sc && events.onError(c),
+      onFatal: (m) => this.useSc === sc && events.onFatal(m),
+    });
+    this.yt = createYouTube(gate(false));
+    this.sc = new SoundCloudEngine(gate(true));
+  }
+
+  mount(el: HTMLElement) {
+    for (const [i, e] of [this.yt, this.sc].entries()) {
+      const box = document.createElement('div');
+      box.className = 'engine-box';
+      box.style.cssText = `position:absolute;inset:0;${i === 1 ? 'visibility:hidden' : ''}`;
+      el.appendChild(box);
+      this.boxes.push(box);
+      e.mount(box);
+    }
+  }
+
+  private get cur(): Engine {
+    return this.useSc ? this.sc : this.yt;
+  }
+
+  load(videoId: string, opts: LoadOptions) {
+    const sc = videoId.startsWith('sc:');
+    if (sc !== this.useSc) {
+      this.cur.pause();
+      this.useSc = sc;
+      this.boxes.forEach((b, i) => (b.style.visibility = (i === 1) === sc ? '' : 'hidden'));
+    }
+    this.cur.load(videoId, opts);
+  }
+  play() {
+    this.cur.play();
+  }
+  pause() {
+    this.cur.pause();
+  }
+  seek(seconds: number) {
+    this.cur.seek(seconds);
+  }
+  setVolume(volume: number) {
+    this.yt.setVolume(volume);
+    this.sc.setVolume(volume);
+  }
+  setMuted(muted: boolean) {
+    this.yt.setMuted(muted);
+    this.sc.setMuted(muted);
+  }
+  getTime() {
+    return this.cur.getTime();
+  }
+  getDuration() {
+    return this.cur.getDuration();
   }
 }
 

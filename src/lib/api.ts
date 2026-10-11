@@ -1,4 +1,4 @@
-import type { CollectionDetail, Counterpart, OriginalSong, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, UpNext } from '../../shared/types';
+import type { CollectionDetail, Counterpart, OriginalSong, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, Track, UpNext } from '../../shared/types';
 
 /** 배포 시 Cloudflare Worker 주소 (예: https://openmusic-api.xxx.workers.dev). 비어 있으면 같은 출처의 /api 사용 */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
@@ -62,6 +62,12 @@ export const api = {
   upNext: (videoId?: string, list?: string) =>
     cachedGet<UpNext>(`/upnext?${videoId ? `v=${enc(videoId)}` : ''}${list ? `&list=${enc(list)}` : ''}`),
   search: (q: string, filter: SearchFilter = 'song') => cachedGet<SearchResult>(`/search?q=${enc(q)}&filter=${filter}`),
+  /** 다른 서비스(Spotify) 곡과 같은 YouTube Music 곡 */
+  match: (q: { title: string; artist: string; duration?: number }) => {
+    const p = new URLSearchParams({ title: q.title, artist: q.artist });
+    if (q.duration) p.set('duration', String(Math.round(q.duration)));
+    return cachedGet<Track | null>(`/match?${p}`, 24 * 60 * 60_000);
+  },
   counterpart: (videoId: string) => cachedGet<Counterpart | null>(`/counterpart/${enc(videoId)}`, 24 * 60 * 60_000),
   /** 가사 (시간 동기화 가사가 있으면 synced 포함). 외부 가사 DB 검색용으로 곡 정보를 함께 보낸다 */
   lyrics: (

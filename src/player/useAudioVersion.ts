@@ -44,6 +44,8 @@ async function withEstimatedSegments(selfId: string, cp: Counterpart | null): Pr
 }
 
 function fetchCounterpart(videoId: string): Promise<Counterpart | null> {
+  // SoundCloud·Spotify 곡은 노래/동영상 짝이 없다
+  if (videoId.includes(':')) return Promise.resolve(null);
   if (cache.has(videoId)) return Promise.resolve(cache.get(videoId)!);
   let p = pending.get(videoId);
   if (!p) {

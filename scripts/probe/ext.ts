@@ -1,39 +1,72 @@
-// 임시 진단: 스포티파이 임베드 / 사운드클라우드 공개 API
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
-async function spotify(kind: string, id: string) {
-  const r = await fetch(`https://open.spotify.com/embed/${kind}/${id}`, { headers: { 'User-Agent': UA } });
-  const html = await r.text();
-  const m = /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
-  if (!m) return console.log(`PROBE spotify ${kind} http=${r.status} no NEXT_DATA len=${html.length}`);
-  const data = JSON.parse(m[1]);
-  const ent = data?.props?.pageProps?.state?.data?.entity;
-  const list = ent?.trackList ?? [];
-  console.log(`PROBE spotify ${kind} http=${r.status} name="${ent?.name ?? ent?.title}" sub="${ent?.subtitle}" tracks=${list.length} cover=${!!(ent?.coverArt ?? ent?.visualIdentity)}`);
-  for (const t of list.slice(0, 3)) console.log(`PROBE    ${JSON.stringify(t).slice(0, 260)}`);
-  if (!list.length) console.log(`PROBE    entity=${JSON.stringify(ent).slice(0, 600)}`);
-}
-await spotify('playlist', '37i9dQZF1DXcBWIGoYBM5M'); // Today's Top Hits
-await spotify('album', '4kS7bSuU0Jm9LYMosFU2x5'); // 임의 앨범
-await spotify('track', '11dFghVXANMlKmJXsNCbNl');
-// 큰 재생목록
-await spotify('playlist', '6UeSakyzhiEt4NB3UAd6NQ'); // Billboard Hot 100 (100+)
+// 임시 진단: 실제 Spotify / SoundCloud 연동 확인 (확인 후 삭제)
+import { spotifyCollection } from '../../server/spotify.js';
+import { scCollection, scSearch } from '../../server/soundcloud.js';
+import { youtubeProvider } from '../../server/youtube.js';
 
-// 사운드클라우드 client_id
-const home = await (await fetch('https://soundcloud.com/', { headers: { 'User-Agent': UA } })).text();
-const scripts = [...home.matchAll(/<script crossorigin src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)].map((m) => m[1]);
-console.log(`PROBE sc home len=${home.length} scripts=${scripts.length}`);
-let clientId = '';
-for (const s of scripts.reverse()) {
-  const js = await (await fetch(s)).text();
-  const m = /client_id\s*[:=]\s*"([a-zA-Z0-9]{32})"/.exec(js) ?? /[?&]client_id=([a-zA-Z0-9]{32})/.exec(js);
-  if (m) { clientId = m[1]; break; }
+const log = (...a: unknown[]) => console.log('PROBE', ...a);
+async function step(name: string, fn: () => Promise<void>) {
+  try {
+    await fn();
+  } catch (e) {
+    log(name, 'ERROR', (e as Error).message);
+  }
 }
-console.log(`PROBE sc client_id=${clientId ? clientId.slice(0, 6) + '…' : 'NONE'}`);
-if (clientId) {
-  const r = await fetch(`https://api-v2.soundcloud.com/search/tracks?${new URLSearchParams({ q: 'lofi hip hop', client_id: clientId, limit: '5' })}`, { headers: { 'User-Agent': UA } });
-  const j: any = await r.json();
-  for (const t of (j.collection ?? []).slice(0, 3)) console.log(`PROBE    sc ${t.id} "${t.title}" / ${t.user?.username} / ${Math.round(t.duration / 1000)}s art=${!!t.artwork_url} url=${t.permalink_url} policy=${t.policy} embeddable=${t.embeddable_by}`);
-  const rs = await fetch(`https://api-v2.soundcloud.com/resolve?${new URLSearchParams({ url: 'https://soundcloud.com/lofi_girl/sets/lofi-hip-hop-radio', client_id: clientId })}`, { headers: { 'User-Agent': UA } });
-  const rj: any = await rs.json().catch(() => ({}));
-  console.log(`PROBE sc resolve http=${rs.status} kind=${rj.kind} title="${rj.title}" tracks=${rj.tracks?.length} track_count=${rj.track_count}`);
-}
+
+await step('spotify playlist', async () => {
+  const c = await spotifyCollection('sp:playlist:37i9dQZF1DXcBWIGoYBM5M');
+  log('sp playlist', c.title, '|', c.subtitle, '|', c.tracks.length, 'tracks', '| thumb', c.thumbnail?.slice(0, 60));
+  for (const t of c.tracks.slice(0, 5)) {
+    const m = await youtubeProvider.match({ title: t.title, artist: t.artists.map((a) => a.name).join(', '), duration: t.duration });
+    log('  match', `${t.title} / ${t.artists.map((a) => a.name).join(', ')} (${t.duration}s)`, '=>', m ? `${m.videoId} ${m.title} / ${m.artists.map((a) => a.name).join(', ')} (${m.duration}s) video=${m.isVideo}` : 'NONE');
+  }
+});
+await step('spotify album', async () => {
+  const c = await spotifyCollection('sp:album:4kS7bSuU0Jm9LYMosFU2x5');
+  log('sp album', c.title, '|', c.subtitle, '|', c.tracks.length, JSON.stringify(c.tracks[0]).slice(0, 200));
+});
+await step('spotify track', async () => {
+  const c = await spotifyCollection('sp:track:11dFghVXANMlKmJXsNCbNl');
+  log('sp track', c.title, '|', c.subtitle, '|', JSON.stringify(c.tracks[0]).slice(0, 250));
+});
+await step('spotify korean', async () => {
+  const c = await spotifyCollection('sp:playlist:37i9dQZF1DX9tPFwDMOaN1'); // K-Pop Daebak
+  log('sp kpop', c.title, c.tracks.length);
+  for (const t of c.tracks.slice(0, 4)) {
+    const m = await youtubeProvider.match({ title: t.title, artist: t.artists.map((a) => a.name).join(', '), duration: t.duration });
+    log('  match', `${t.title} / ${t.artists.map((a) => a.name).join(', ')} (${t.duration}s)`, '=>', m ? `${m.videoId} ${m.title} / ${m.artists.map((a) => a.name).join(', ')} (${m.duration}s) video=${m.isVideo}` : 'NONE');
+  }
+});
+
+let first = '';
+await step('sc search', async () => {
+  const r = await scSearch('lofi hip hop');
+  log('sc search', r.length, r.slice(0, 3).map((t) => `${t.videoId} ${t.title} / ${t.artists[0].name} ${t.duration}s ${t.url} ${t.thumbnail?.slice(0, 50)}`));
+  first = r.find((t) => t.url)?.url ?? '';
+});
+await step('sc track link', async () => {
+  const path = first.replace('https://soundcloud.com/', '');
+  const c = await scCollection(`sc:${path}`);
+  log('sc track', c.title, '|', c.subtitle, '|', c.tracks.length);
+});
+await step('sc set', async () => {
+  const r = await fetch(`https://soundcloud.com/${first.replace('https://soundcloud.com/', '').split('/')[0]}/sets`).then((x) => x.text());
+  const set = /href="(\/[\w-]+\/sets\/[\w-]+)"/.exec(r)?.[1];
+  log('found set', set);
+  if (set) {
+    const c = await scCollection(`sc:${set.slice(1)}`);
+    log('sc set', c.title, '|', c.subtitle, '|', c.tracks.length, c.tracks.slice(-1).map((t) => t.title));
+  }
+});
+await step('sc user', async () => {
+  const c = await scCollection(`sc:${first.replace('https://soundcloud.com/', '').split('/')[0]}`);
+  log('sc user', c.title, '|', c.subtitle, '|', c.tracks.length);
+});
+await step('sc lyrics', async () => {
+  const r = await scSearch('Adele Hello');
+  const t = r[0];
+  log('sc pick', t?.videoId, t?.title, t?.artists[0].name, t?.duration);
+  if (t) {
+    const ly = await youtubeProvider.lyrics(t.videoId, { title: t.title, artist: t.artists[0].name, duration: t.duration });
+    log('sc lyrics', ly ? `${ly.source} synced=${ly.synced?.length ?? 0}` : 'none');
+  }
+});

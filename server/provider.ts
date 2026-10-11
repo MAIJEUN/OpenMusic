@@ -1,5 +1,5 @@
 import type { LyricsQuery } from './lyrics.js';
-import type { CollectionDetail, Counterpart, ContinuationPage, Lyrics, SearchFilter, SearchResult, UpNext } from '../shared/types.js';
+import type { CollectionDetail, Counterpart, ContinuationPage, Lyrics, MatchQuery, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
 
 /** 메타데이터 공급자 (실제 YouTube Music 또는 개발용 목 데이터) */
 export interface Provider {
@@ -12,4 +12,6 @@ export interface Provider {
   /** 노래 ↔ 뮤직비디오 짝 */
   counterpart(videoId: string): Promise<Counterpart | null>;
   search(query: string, filter: SearchFilter): Promise<SearchResult>;
+  /** 다른 서비스 곡(Spotify)과 같은 YouTube Music 곡 */
+  match(q: MatchQuery): Promise<Track | null>;
 }

@@ -35,6 +35,7 @@ async function fetchSegments(videoId: string): Promise<SkipSegment[]> {
 
 /** 영상의 건너뛸 구간 (없거나 조회 실패면 빈 배열) */
 export function skipSegments(videoId: string): Promise<SkipSegment[]> {
+  if (videoId.includes(':')) return Promise.resolve([]);
   let p = cache.get(videoId);
   if (!p) {
     p = fetchSegments(videoId).catch(() => {

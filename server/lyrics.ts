@@ -235,6 +235,7 @@ const VARIANT = /(remix|instrumental|inst\.?|karaoke|off\s*vocal|cover|カバー
 /** 커버곡 제목으로 원곡 후보(YouTube Music의 노래)를 찾는다. 앞쪽일수록 원곡일 가능성이 크다 */
 /** 영상 설명란 (원곡·작곡가 표기를 원곡 찾기 힌트로 쓴다) */
 async function videoDescription(yt: Innertube, videoId: string): Promise<string> {
+  if (videoId.includes(':')) return '';
   try {
     const res = await yt.actions.execute('/next', { videoId, client: 'WEB' });
     const d = findKey(res.data, 'attributedDescription') ?? findKey(res.data, 'description');
@@ -319,6 +320,8 @@ async function originalSongs(yt: Innertube, title: string, coverArtist?: string,
 async function fetchDirect(yt: Innertube, videoId: string, q: LyricsQuery): Promise<Lyrics | null> {
   // YouTube Music, LRCLIB, NetEase를 동시에 조회해서 기다리는 시간을 줄인다
   const ytmTask = (async () => {
+    // SoundCloud 곡 등 YouTube 영상이 아니면 YouTube Music 가사는 없다
+    if (videoId.includes(':')) return { browseId: undefined, timed: null };
     const browseId = await lyricsBrowseId(yt, videoId).catch(() => undefined);
     const timed = browseId ? await ytmTimed(yt, browseId).catch(() => null) : null;
     return { browseId, timed };

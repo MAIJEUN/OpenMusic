@@ -1,6 +1,17 @@
 /**
- * YouTube / YouTube Music 링크(또는 ID)를 앱 내부 대상(재생목록, 앨범, 곡)으로 해석한다.
+ * YouTube / YouTube Music / Spotify / SoundCloud 링크(또는 ID)를 앱 내부 대상(재생목록, 앨범, 곡)으로 해석한다.
+ *
+ * 다른 서비스 곡·목록은 재생목록 ID 앞에 서비스 표시를 붙여 기존 화면을 그대로 쓴다.
+ * - Spotify: sp:playlist:ID, sp:album:ID, sp:track:ID (곡은 sp:ID — 재생할 때 YouTube Music에서 같은 곡을 찾는다)
+ * - SoundCloud: sc:<soundcloud.com 뒤의 경로> (곡은 sc:숫자ID — SoundCloud 플레이어로 직접 재생)
  */
+
+/** Spotify·SoundCloud 등 다른 서비스 목록인지 */
+export const isExternalList = (id: string) => id.startsWith('sp:') || id.startsWith('sc:');
+/** YouTube 영상이 아닌 곡 ID인지 */
+export const isSoundCloudId = (videoId: string) => videoId.startsWith('sc:');
+export const isSpotifyId = (videoId: string) => videoId.startsWith('sp:');
+export const isYouTubeId = (videoId: string) => !isSoundCloudId(videoId) && !isSpotifyId(videoId);
 export type LinkTarget =
   | { type: 'playlist'; id: string }
   | { type: 'album'; id: string }
@@ -22,6 +33,10 @@ export function parseLink(raw: string): LinkTarget | null {
   const input = raw.trim();
   if (!input) return null;
 
+  // spotify:playlist:ID 같은 Spotify URI
+  const uri = input.match(/^spotify:(playlist|album|track):([A-Za-z0-9]{10,})$/);
+  if (uri) return { type: 'playlist', id: `sp:${uri[1]}:${uri[2]}` };
+
   // URL이 아닌 순수 ID
   if (!/^[a-z]+:\/\//i.test(input) && !input.includes('/') && !input.includes('?')) {
     if (input.startsWith('MPRE')) return { type: 'album', id: input };
@@ -38,6 +53,23 @@ export function parseLink(raw: string): LinkTarget | null {
   }
 
   const host = url.hostname.replace(/^(www|m)\./, '');
+
+  // Spotify: open.spotify.com/(intl-ko/)playlist|album|track/ID
+  if (host === 'open.spotify.com') {
+    const m = url.pathname.match(/\/(playlist|album|track)\/([A-Za-z0-9]{10,})/);
+    return m ? { type: 'playlist', id: `sp:${m[1]}:${m[2]}` } : null;
+  }
+  // 앱 공유용 짧은 주소: 서버가 실제 주소로 따라간다
+  if (host === 'spotify.link') {
+    const code = url.pathname.replace(/^\/+|\/+$/g, '');
+    return /^[\w-]+$/.test(code) ? { type: 'playlist', id: `sp:link:${code}` } : null;
+  }
+  // SoundCloud: soundcloud.com/가수/곡, soundcloud.com/가수/sets/목록, on.soundcloud.com/짧은주소
+  if (host === 'soundcloud.com' || host === 'on.soundcloud.com' || host === 'api.soundcloud.com') {
+    const p = url.pathname.replace(/^\/+|\/+$/g, '');
+    if (!p) return null;
+    return { type: 'playlist', id: `sc:${host === 'soundcloud.com' ? '' : `${host}/`}${p}` };
+  }
   const list = url.searchParams.get('list') ?? undefined;
   const v = url.searchParams.get('v') ?? undefined;
   const path = url.pathname.replace(/\/+$/, '');

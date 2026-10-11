@@ -3,13 +3,15 @@
  * 재생 자체는 브라우저의 YouTube IFrame Player가 담당하고, 서버는 메타데이터만 가져온다.
  */
 import { Innertube, YTMusic, YTNodes } from 'youtubei.js';
-import type { ArtistRef, CollectionDetail, Counterpart, ContinuationPage, Lyrics, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
+import type { ArtistRef, CollectionDetail, Counterpart, ContinuationPage, Lyrics, MatchQuery, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
 import { stripVL } from '../shared/links.js';
 import { fetchLyrics, titleCandidates, type LyricsQuery } from './lyrics.js';
 import { findAll } from './json.js';
 import { rawContinuation, rawPlaylist } from './rawPlaylist.js';
 import { bestThumb, parseDuration, parseRuns, runsOf, textOf, trackFromListItem, trackFromPanelVideo, type TrackFallback } from './normalize.js';
 import type { Provider } from './provider.js';
+import { scCollection, scSearch } from './soundcloud.js';
+import { spotifyCollection } from './spotify.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any;
@@ -97,6 +99,8 @@ function tracksFrom(items: AnyNode, fallback: TrackFallback = {}): Track[] {
 }
 
 async function getPlaylist(id: string): Promise<CollectionDetail> {
+  if (id.startsWith('sp:')) return spotifyCollection(id);
+  if (id.startsWith('sc:')) return scCollection(id);
   // 가벼운 원본 JSON 해석을 먼저 시도하고, 안 되면 youtubei.js 파서로
   try {
     const raw = await rawPlaylist(await yt(), id);
@@ -290,6 +294,7 @@ async function counterpart(videoId: string): Promise<Counterpart | null> {
 const artistNamesOf = (t: Track) => (t.artists ?? []).map((a) => a.name).join(', ');
 
 async function search(query: string, filter: SearchFilter): Promise<SearchResult> {
+  if (filter === 'soundcloud') return { query, filter, tracks: await scSearch(query) };
   const music = (await yt()).music;
   const res: AnyNode = await music.search(query, { type: filter });
   const tracks: Track[] = [];
@@ -307,7 +312,41 @@ async function search(query: string, filter: SearchFilter): Promise<SearchResult
   return { query, filter, tracks };
 }
 
+/**
+ * 다른 서비스(Spotify) 곡과 같은 YouTube Music 노래 찾기.
+ * 제목이 같거나 비슷하고, 가수가 겹치고, 길이가 비슷한 노래를 고른다. 노래가 없으면 뮤직비디오도 본다.
+ */
+async function match(q: MatchQuery): Promise<Track | null> {
+  const keys = normTitles(q.title, q.artist);
+  const artistKeys = q.artist
+    .split(/\s*,\s*/)
+    .map((a) => a.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ''))
+    .filter(Boolean);
+  const score = (t: Track, i: number) => {
+    const ks = normTitles(t.title, artistNamesOf(t));
+    const exact = ks.some((k) => keys.includes(k));
+    const similar = exact || ks.some((k) => keys.some((key) => k.length > 1 && key.length > 1 && (k.includes(key) || key.includes(k))));
+    if (!similar) return -Infinity;
+    const names = artistNamesOf(t).toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+    const artistOk = !artistKeys.length || artistKeys.some((a) => names.includes(a) || (names.length > 1 && a.includes(names)));
+    const diff = q.duration && t.duration ? Math.abs(q.duration - t.duration) : 0;
+    if (!artistOk && diff > 3) return -Infinity;
+    return (exact ? 30 : 10) + (artistOk ? 40 : 0) - Math.min(diff, 60) - i * 2 - (t.isVideo ? 15 : 0);
+  };
+  for (const filter of ['song', 'video'] as const) {
+    const found = await search(`${q.title} ${q.artist.split(',')[0]}`.trim(), filter);
+    const best = found.tracks
+      .slice(0, 10)
+      .map((t, i) => ({ t, s: score(t, i) }))
+      .filter((x) => x.s > -Infinity)
+      .sort((a, b) => b.s - a.s)[0];
+    if (best) return best.t;
+  }
+  return null;
+}
+
 export const youtubeProvider: Provider = {
+  match,
   playlist: getPlaylist,
   continuation: getContinuation,
   album: getAlbum,
