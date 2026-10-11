@@ -9,7 +9,7 @@ import type { Innertube } from 'youtubei.js';
 import type { LyricLine, LyricWord, Lyrics } from '../shared/types.js';
 import { findKey } from './json.js';
 import { neteaseWordLyrics } from './netease.js';
-import { textOf } from './normalize.js';
+import { textOf, trackFromListItem } from './normalize.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any;
@@ -200,7 +200,56 @@ async function lrclib(q: LyricsQuery): Promise<Lyrics | null> {
 
 /* ------------------------------ 합치기 ------------------------------ */
 
-export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery): Promise<Lyrics | null> {
+/* ------------------------------ 커버곡 ------------------------------ */
+
+const COVER_WORDS = /(cover(ed)?|커버|불러\s*(봄|봤|보았|봤어요|드림)|歌ってみた|歌いました|カバー|翻唱|弾き語り|acoustic|어쿠스틱|piano\s*ver|피아노\s*ver|band\s*ver|밴드\s*ver)/i;
+
+/** 제목에서 커버 표시(괄호 안의 cover by…, | Cover, 【歌ってみた】 등)를 지운다 */
+export function stripCover(title: string): string {
+  let t = title
+    // 괄호 안에 커버 관련 말이 있으면 괄호째로
+    .replace(/[(\[【［（<〈《][^)\]】］）>〉》]*[)\]】］）>〉》]/g, (m) => (COVER_WORDS.test(m) ? ' ' : m))
+    // "| Cover by …", "/ 歌ってみた" 처럼 구분자 뒤에 오는 커버 표시
+    .split(/\s*[|｜/／]\s*/)
+    .filter((part, i) => i === 0 || !COVER_WORDS.test(part))
+    .join(' - ')
+    // 남은 "cover by 누구" 꼬리와 제목 중간의 커버 표시(歌ってみた, 커버 등)
+    .replace(/\s*[-–—~]?\s*cover(ed)?\s*(by|ver\.?|version)\s.*$/i, '')
+    .replace(/(cover(ed)?|커버|歌ってみた|歌いました|カバー|翻唱)(?=\s|$|[-–—~])/gi, ' ')
+    .replace(/\s*[-–—~]\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!t) t = title;
+  return t;
+}
+
+const normKey = (s: string) => s.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+
+/** 커버곡 제목으로 원곡(YouTube Music의 노래)을 찾는다 */
+async function originalSong(yt: Innertube, title: string, coverArtist?: string) {
+  const cands = titleCandidates(stripCover(title), coverArtist);
+  const keys = cands.map(normKey).filter((k) => k.length > 1);
+  if (!keys.length) return null;
+  const coverKey = coverArtist ? normKey(coverArtist) : '';
+  for (const query of [...new Set([cands[cands.length - 1], cands[0]])]) {
+    const res: AnyNode = await yt.music.search(query, { type: 'song' });
+    const items: AnyNode[] = Array.from(res.contents ?? []).flatMap((s: AnyNode) => Array.from(s?.contents ?? []));
+    for (const it of items) {
+      const t = trackFromListItem(it);
+      if (!t) continue;
+      const k = normKey(t.title);
+      const titleOk = keys.some((key) => k === key || k.includes(key) || key.includes(k));
+      const artist = t.artists.map((a) => a.name).join(', ');
+      // 커버한 사람 본인의 노래는 원곡이 아니다
+      if (!titleOk || (coverKey && normKey(artist).includes(coverKey))) continue;
+      return { videoId: t.videoId, title: t.title, artist, duration: t.duration };
+    }
+  }
+  return null;
+}
+
+/** 이 영상 자체의 가사 (YouTube Music · LRCLIB · NetEase) */
+async function fetchDirect(yt: Innertube, videoId: string, q: LyricsQuery): Promise<Lyrics | null> {
   // YouTube Music, LRCLIB, NetEase를 동시에 조회해서 기다리는 시간을 줄인다
   const ytmTask = (async () => {
     const browseId = await lyricsBrowseId(yt, videoId).catch(() => undefined);
@@ -230,4 +279,21 @@ export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery
     }
   }
   return lr;
+}
+
+export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery): Promise<Lyrics | null> {
+  const direct = await fetchDirect(yt, videoId, q);
+  if (direct || !q.title) return direct;
+
+  // 커버곡 등 가사를 못 찾으면 원곡을 찾아 그 가사를 보여준다
+  const orig = await originalSong(yt, q.title, q.artist).catch(() => null);
+  if (!orig) return null;
+  const ly = await fetchDirect(yt, orig.videoId, { title: orig.title, artist: orig.artist, duration: orig.duration });
+  if (!ly) return null;
+  const timingMatches = !!(q.duration && orig.duration && Math.abs(q.duration - orig.duration) <= 3);
+  return {
+    ...ly,
+    source: [`원곡 가사: ${orig.artist} - ${orig.title}`, ly.source].filter(Boolean).join(' · '),
+    original: { title: orig.title, artist: orig.artist, timingMatches },
+  };
 }

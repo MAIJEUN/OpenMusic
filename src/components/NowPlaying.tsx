@@ -327,6 +327,11 @@ function LyricsPanel({ track }: { track: Track }) {
     [track.videoId, cpState.loading],
   );
   const [mode, setMode] = useState<'synced' | 'plain'>('synced');
+  // 커버곡처럼 원곡 가사를 빌려 왔고 길이도 다르면 박자가 안 맞을 가능성이 커서 전체 가사로 시작
+  const coverMismatch = !!data?.original && !data.original.timingMatches;
+  useEffect(() => {
+    if (coverMismatch) setMode('plain');
+  }, [coverMismatch]);
 
   // 자동 싱크: 지금 재생 중인 영상의 시간으로 가사 시간을 옮긴다
   const sponsor = useAsync(() => skipSegments(playingId), [playingId]);
@@ -401,6 +406,12 @@ function LyricsPanel({ track }: { track: Track }) {
         <SyncedLines key={playingId} lines={auto!.lines} offset={offset} />
       ) : (
         <p className="lyrics__text">{data.text}</p>
+      )}
+      {data.original && (
+        <p className="lyrics__note">
+          커버곡이라 원곡({data.original.artist} - {data.original.title}) 가사를 보여드려요.
+          {data.synced?.length && mode === 'synced' && !data.original.timingMatches ? ' 원곡과 박자가 달라 어긋나면 싱크 버튼으로 맞춰 주세요.' : ''}
+        </p>
       )}
       {data.source && <p className="lyrics__source">{data.source}</p>}
     </div>

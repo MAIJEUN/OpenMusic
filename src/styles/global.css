@@ -1645,6 +1645,12 @@ p {
   color: var(--text-3);
   font-size: 13px;
 }
+.lyrics__note {
+  margin-top: 20px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .lyrics__bar {
   display: flex;
   align-items: center;

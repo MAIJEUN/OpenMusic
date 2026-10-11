@@ -66,6 +66,13 @@ export interface Lyrics {
   synced?: LyricLine[];
   /** 가사가 맞춰진 음원 길이(초). 재생 중인 영상 길이와 다르면 싱크가 어긋날 수 있다 */
   duration?: number;
+  /** 커버곡 등이라 원곡 가사를 대신 보여줄 때의 원곡 정보 */
+  original?: {
+    title: string;
+    artist: string;
+    /** 원곡과 길이가 비슷해서 시간 동기화 가사를 그대로 써도 될 것 같은지 */
+    timingMatches: boolean;
+  };
 }
 
 /**
