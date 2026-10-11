@@ -51,7 +51,14 @@ export async function rawPlaylist(yt: Innertube, id: string): Promise<Collection
     title: textOf(h.title),
     subtitle: textOf(h.subtitle) || undefined,
     secondSubtitle: textOf(h.secondSubtitle) || undefined,
-    author: strap.artists[0] ?? sub.artists[0] ?? (strapText ? { name: strapText } : undefined),
+    author:
+      strap.artists[0] ??
+      sub.artists[0] ??
+      (strapText ? { name: strapText } : undefined) ??
+      // 새 화면 구조: 만든 사람이 facepile(아바타 묶음) 안에 들어 있다
+      (typeof findKey(h, 'avatarStackViewModel')?.text?.content === 'string'
+        ? { name: findKey(h, 'avatarStackViewModel').text.content }
+        : undefined),
     description: textOf(desc) || undefined,
     thumbnail: bestThumb(h.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails),
     year: sub.year,
