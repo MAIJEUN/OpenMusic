@@ -317,7 +317,13 @@ async function search(query: string, filter: SearchFilter): Promise<SearchResult
  * 제목이 같거나 비슷하고, 가수가 겹치고, 길이가 비슷한 노래를 고른다. 노래가 없으면 뮤직비디오도 본다.
  */
 async function match(q: MatchQuery): Promise<Track | null> {
-  const keys = normTitles(q.title, q.artist);
+  // Spotify 제목의 '(feat. …)', '- Remastered 2011' 같은 꾸밈말은 YouTube Music 제목과 다를 수 있어 떼고 찾는다
+  const title =
+    q.title
+      .replace(/\s*[([](feat|ft|with)\.?\s[^)\]]*[)\]]/gi, '')
+      .replace(/\s+-\s+[^-]*(remaster|version|live|mono|stereo|edit|mix)[^-]*$/i, '')
+      .trim() || q.title;
+  const keys = [...new Set([...normTitles(title, q.artist), ...normTitles(q.title, q.artist)])];
   const artistKeys = q.artist
     .split(/\s*,\s*/)
     .map((a) => a.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ''))
@@ -334,7 +340,7 @@ async function match(q: MatchQuery): Promise<Track | null> {
     return (exact ? 30 : 10) + (artistOk ? 40 : 0) - Math.min(diff, 60) - i * 2 - (t.isVideo ? 15 : 0);
   };
   for (const filter of ['song', 'video'] as const) {
-    const found = await search(`${q.title} ${q.artist.split(',')[0]}`.trim(), filter);
+    const found = await search(`${title} ${q.artist.split(',')[0]}`.trim(), filter);
     const best = found.tracks
       .slice(0, 10)
       .map((t, i) => ({ t, s: score(t, i) }))
