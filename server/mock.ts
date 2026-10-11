@@ -193,7 +193,13 @@ export const mockProvider: Provider = {
         text: LYRICS,
         source: '원곡 가사: 테스트 가수 - 원곡 · 출처: OpenMusic Mock Lyrics',
         synced: lines,
-        original: { title: '원곡', artist: '테스트 가수', timingMatches: false },
+        original: {
+          videoId: 'mockorig1',
+          title: '원곡',
+          artist: '테스트 가수',
+          timingMatches: false,
+          alternatives: [{ videoId: 'mockorig2', title: '원곡', artist: '다른 가수', duration: 201 }],
+        },
       };
     }
     // 끝자리 1·2: 시간 동기화 가사 (6초부터 4초 간격)

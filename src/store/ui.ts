@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Track } from '../../shared/types';
+import type { OriginalSong, Track } from '../../shared/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -38,6 +38,11 @@ export interface PlaybackSettings {
   silenceSeconds: number;
 }
 
+export interface LyricsOverride {
+  hidden?: boolean;
+  original?: OriginalSong;
+}
+
 export type Dialog =
   | { type: 'addLink' }
   | { type: 'settings' }
@@ -56,6 +61,9 @@ interface UiState {
   setPlayback: (patch: Partial<PlaybackSettings>) => void;
   /** 곡(영상 ID)별로 직접 맞춘 가사 싱크(초) */
   lyricsOffsets: Record<string, number>;
+  /** 영상별 가사 설정: 숨기기, 직접 고른 원곡 */
+  lyricsOverrides: Record<string, LyricsOverride>;
+  setLyricsOverride: (videoId: string, o: LyricsOverride | null) => void;
   setLyricsOffset: (videoId: string, seconds: number) => void;
   nowPlayingOpen: boolean;
   npTab: NowPlayingTab;
@@ -86,6 +94,16 @@ export const useUi = create<UiState>()(
       playback: { crossfade: 5, skipNonMusic: true, skipSilence: true, silenceSeconds: 3 },
       setPlayback: (patch) => set((s) => ({ playback: { ...s.playback, ...patch } })),
       lyricsOffsets: {},
+      lyricsOverrides: {},
+      setLyricsOverride: (videoId, o) =>
+        set((s) => {
+          const next = { ...s.lyricsOverrides };
+          delete next[videoId];
+          if (o) next[videoId] = o;
+          const keys = Object.keys(next);
+          for (const k of keys.slice(0, Math.max(0, keys.length - 500))) delete next[k];
+          return { lyricsOverrides: next };
+        }),
       setLyricsOffset: (videoId, seconds) =>
         set((s) => {
           const next = { ...s.lyricsOffsets };
@@ -121,7 +139,7 @@ export const useUi = create<UiState>()(
     }),
     {
       name: 'om-ui',
-      partialize: (s) => ({ sidebarCollapsed: s.sidebarCollapsed, npMode: s.npMode, playback: s.playback, lyricsOffsets: s.lyricsOffsets }),
+      partialize: (s) => ({ sidebarCollapsed: s.sidebarCollapsed, npMode: s.npMode, playback: s.playback, lyricsOffsets: s.lyricsOffsets, lyricsOverrides: s.lyricsOverrides }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<UiState>;
         return { ...current, ...p, playback: { ...current.playback, ...(p.playback ?? {}) } };

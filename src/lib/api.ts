@@ -1,4 +1,4 @@
-import type { CollectionDetail, Counterpart, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, UpNext } from '../../shared/types';
+import type { CollectionDetail, Counterpart, OriginalSong, ContinuationPage, Lyrics, SearchFilter, SearchResult, ServerConfig, UpNext } from '../../shared/types';
 
 /** 배포 시 Cloudflare Worker 주소 (예: https://openmusic-api.xxx.workers.dev). 비어 있으면 같은 출처의 /api 사용 */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
@@ -64,12 +64,22 @@ export const api = {
   search: (q: string, filter: SearchFilter = 'song') => cachedGet<SearchResult>(`/search?q=${enc(q)}&filter=${filter}`),
   counterpart: (videoId: string) => cachedGet<Counterpart | null>(`/counterpart/${enc(videoId)}`, 24 * 60 * 60_000),
   /** 가사 (시간 동기화 가사가 있으면 synced 포함). 외부 가사 DB 검색용으로 곡 정보를 함께 보낸다 */
-  lyrics: (videoId: string, q: { title?: string; artist?: string; album?: string; duration?: number } = {}) => {
-    const p = new URLSearchParams({ v: '5' });
+  lyrics: (
+    videoId: string,
+    q: { title?: string; artist?: string; album?: string; duration?: number; original?: OriginalSong } = {},
+  ) => {
+    const p = new URLSearchParams({ v: '6' });
     if (q.title) p.set('title', q.title);
     if (q.artist) p.set('artist', q.artist);
     if (q.album) p.set('album', q.album);
     if (q.duration) p.set('duration', String(Math.round(q.duration)));
+    // 사용자가 고른 원곡
+    if (q.original) {
+      p.set('orig', q.original.videoId);
+      p.set('origTitle', q.original.title);
+      p.set('origArtist', q.original.artist);
+      if (q.original.duration) p.set('origDur', String(Math.round(q.original.duration)));
+    }
     return cachedGet<Lyrics | null>(`/lyrics/${enc(videoId)}?${p}`, 60 * 60_000);
   },
 };
