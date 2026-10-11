@@ -244,11 +244,29 @@ async function videoDescription(yt: Innertube, videoId: string): Promise<string>
   }
 }
 
-async function originalSongs(yt: Innertube, title: string, coverArtist?: string, hints = '', coverDuration?: number) {
+/**
+ * strict: 제목에 커버 표시가 없는 곡(가수 본인 곡일 수 있음) — 제목이 완전히 같고 길이도 비슷한 곡만 원곡으로 본다.
+ * 그렇지 않으면 다른 곡 가사(예: iCONiC → Icon)를 가져오는 경우가 생긴다.
+ */
+async function originalSongs(yt: Innertube, title: string, coverArtist?: string, hints = '', coverDuration?: number, strict = false) {
   const cands = titleCandidates(stripCover(title), coverArtist);
   const keys = cands.map(normKey).filter((k) => k.length > 1);
   if (!keys.length) return [];
-  const coverKey = coverArtist ? normKey(coverArtist) : '';
+  // 여러 명이 부른 곡이면 각 이름을 따로 본다 (ReGLOSS, Otonose Kanade, …)
+  const coverNames = (coverArtist ?? '')
+    .split(/\s*[,&、]\s*/)
+    .map(normKey)
+    .filter((k) => k.length > 1);
+  const byCoverArtist = (artist: string) => {
+    const a = normKey(artist);
+    return coverNames.some((n) => a.includes(n) || n.includes(a));
+  };
+  // 제목이 부분만 겹치는 경우(icon ⊂ iconic)는 다른 곡이다. 꾸밈말 정도 차이(길이 70% 이상)만 같은 곡으로 본다
+  const similar = (a: string, b: string) => {
+    if (a === b) return true;
+    const [short, long] = a.length < b.length ? [a, b] : [b, a];
+    return short.length >= 3 && long.includes(short) && short.length / long.length >= 0.7;
+  };
   // "KING / Kanaria"처럼 제목에 원곡 가수가 들어 있는 경우가 많다
   const titleKey = normKey(stripCover(title));
   // 설명란에 "原曲 : LiSA", "Original: ..." 처럼 원곡 정보가 적혀 있는 경우가 많다
@@ -271,14 +289,15 @@ async function originalSongs(yt: Innertube, title: string, coverArtist?: string,
       if (!t || seen.has(t.videoId)) return;
       const k = normKey(t.title);
       const exact = keys.includes(k);
-      const titleOk = exact || keys.some((key) => k.includes(key) || key.includes(k));
+      const titleOk = exact || (!strict && keys.some((key) => similar(k, key)));
       const artist = t.artists.map((a) => a.name).join(', ');
       // 커버한 사람 본인의 노래는 원곡이 아니다
-      if (!titleOk || (coverKey && normKey(artist).includes(coverKey))) return;
-      seen.add(t.videoId);
-      // 검색 순위가 높고, 제목이 정확히 같고, 다른 버전 표시가 없을수록 원곡
+      if (!titleOk || byCoverArtist(artist)) return;
       // 커버는 보통 원곡과 길이가 비슷하다 (앞뒤로 몇 초 붙는 정도)
       const durDiff = coverDuration && t.duration ? Math.abs(coverDuration - t.duration) : 0;
+      if (strict && (!coverDuration || !t.duration || durDiff > 10)) return;
+      seen.add(t.videoId);
+      // 검색 순위가 높고, 제목이 정확히 같고, 다른 버전 표시가 없을수록 원곡
       const score =
         qi * 100 +
         rank +
@@ -362,7 +381,8 @@ export async function fetchLyrics(yt: Innertube, videoId: string, q: LyricsQuery
   const looksCover = !!q.title && COVER_WORDS.test(q.title);
   const origLyrics = async () => {
     const hints = await videoDescription(yt, videoId);
-    const origs = await originalSongs(yt, q.title ?? '', q.artist, hints, q.duration).catch(() => []);
+    // 제목에 커버 표시가 없으면 가수 본인 곡일 수 있어 엄격하게만 찾는다
+    const origs = await originalSongs(yt, q.title ?? '', q.artist, hints, q.duration, !looksCover).catch(() => []);
     // 첫 후보에 가사가 없으면 다음 후보로 (같은 제목의 다른 사람 버전일 수 있다)
     for (const orig of origs.slice(0, 3)) {
       const ly = await fetchDirect(yt, orig.videoId, { title: orig.title, artist: orig.artist, duration: orig.duration }).catch(() => null);
