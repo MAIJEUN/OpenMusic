@@ -25,6 +25,10 @@ export interface Track {
   isVideo?: boolean;
   /** 조회수, 재생 횟수 등 부가 정보 */
   extra?: string;
+  /** 다른 서비스 곡의 원본 페이지 주소 (SoundCloud·Spotify) */
+  url?: string;
+  /** 다른 서비스 곡을 YouTube에서 찾아 바꾼 경우 원래 곡 ID (sp:…) */
+  sourceId?: string;
 }
 
 export interface CollectionDetail {
@@ -51,7 +55,16 @@ export interface ContinuationPage {
   continuation?: string;
 }
 
-export type SearchFilter = 'song' | 'video';
+export type SearchFilter = 'song' | 'video' | 'soundcloud';
+
+/** 다른 서비스 곡과 같은 YouTube Music 곡을 찾기 위한 정보 */
+export interface MatchQuery {
+  title: string;
+  /** 쉼표로 구분한 가수 이름 */
+  artist: string;
+  /** 초 */
+  duration?: number;
+}
 
 export interface SearchResult {
   query: string;

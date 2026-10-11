@@ -91,6 +91,26 @@ la la la, 다시 한 번 더
 export const mockProvider: Provider = {
   async playlist(id) {
     await delay();
+    // Spotify·SoundCloud 링크: 곡 ID만 그 서비스 형식으로 바꾼 목록
+    if (id.startsWith('sp:') || id.startsWith('sc:')) {
+      const sp = id.startsWith('sp:');
+      const tracks = tracksRange(7000, 12).map((t, i) => ({
+        ...t,
+        videoId: sp ? `sp:mockSpotify${String(i).padStart(3, '0')}` : `sc:${900000 + i}`,
+        // Spotify 재생목록은 곡별 앨범 아트가 없다. 3번째 곡은 YouTube에서 못 찾는 곡
+        ...(sp ? { thumbnail: undefined, album: undefined, title: i === 2 ? `${t.title} (nomatch)` : t.title } : {}),
+        isVideo: false,
+        extra: sp ? undefined : 'SoundCloud',
+      }));
+      return {
+        kind: 'playlist',
+        id,
+        title: sp ? 'Spotify 테스트 재생목록' : 'SoundCloud 테스트 재생목록',
+        subtitle: sp ? 'Spotify • 재생목록' : 'SoundCloud • 재생목록',
+        thumbnail: img(`pl-${id}`),
+        tracks,
+      };
+    }
     const seed = [...id].reduce((a, c) => a + c.charCodeAt(0), 0);
     const total = 60 + (seed % 90);
     const first = Math.min(total, 100);
@@ -160,12 +180,24 @@ export const mockProvider: Provider = {
   async search(query, filter) {
     await delay();
     const seed = [...query].reduce((a, c) => a + c.charCodeAt(0), 0);
+    if (filter === 'soundcloud') {
+      const tracks = tracksRange(seed * 7 + 8000, 15).map((t, i) => ({ ...t, videoId: `sc:${800000 + i}`, isVideo: false, album: undefined, extra: 'SoundCloud' }));
+      return { query, filter, tracks };
+    }
     const tracks = tracksRange(seed * 7 + 6000, 20).map((t) =>
       filter === 'video'
         ? { ...t, isVideo: true, album: undefined, extra: t.extra ?? '조회수 120만회', thumbnail: img(`v${t.videoId}`) }
         : { ...t, isVideo: false },
     );
     return { query, filter, tracks };
+  },
+
+  async match(q) {
+    await delay();
+    // 'nomatch'가 들어간 곡은 못 찾은 것으로
+    if (/nomatch/i.test(q.title)) return null;
+    const n = [...q.title].reduce((a, c) => a + c.charCodeAt(0), 0);
+    return { ...makeTrack(n), title: q.title, artists: q.artist.split(/\s*,\s*/).map((name) => ({ name })), isVideo: false };
   },
 
   async counterpart(videoId) {

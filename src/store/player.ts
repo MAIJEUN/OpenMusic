@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Track } from '../../shared/types';
+import { isSpotifyId } from '../../shared/links';
+import { api } from '../lib/api';
 import { shuffleArray, uid } from '../lib/format';
 import type { Engine, EngineState } from '../player/engine';
 import { toast } from './ui';
@@ -94,6 +96,42 @@ export function setSourceResolver(fn: SourceResolver) {
 export const sourceOf = (t: Track) => resolveSource(t);
 let consecutiveErrors = 0;
 
+/** 재생 위치가 없는 오류 코드: Spotify 곡과 같은 곡을 YouTube Music에서 찾지 못함 */
+export const NOT_FOUND_ERROR = -404;
+
+/**
+ * Spotify 곡은 재생할 수 없어서 YouTube Music에서 같은 곡을 찾아 대신 튼다.
+ * 찾으면 대기열의 곡 정보를 YouTube 곡으로 바꿔서(제목·가수는 Spotify 그대로) 이후로는 일반 곡처럼 다룬다.
+ */
+const matching = new Map<string, Promise<Track | null>>();
+function matchSpotify(track: Track): Promise<Track | null> {
+  let p = matching.get(track.videoId);
+  if (!p) {
+    p = api
+      .match({ title: track.title, artist: (track.artists ?? []).map((a) => a.name).join(', '), duration: track.duration })
+      .then((yt) =>
+        yt
+          ? {
+              ...track,
+              videoId: yt.videoId,
+              sourceId: track.videoId,
+              isVideo: yt.isVideo,
+              duration: yt.duration ?? track.duration,
+              thumbnail: track.thumbnail || yt.thumbnail,
+              album: track.album ?? yt.album,
+              artists: (track.artists ?? []).length ? track.artists : yt.artists,
+            }
+          : null,
+      )
+      .catch((err) => {
+        matching.delete(track.videoId);
+        throw err;
+      });
+    matching.set(track.videoId, p);
+  }
+  return p;
+}
+
 /**
  * 탐색 처리.
  * YouTube 플레이어는 seekTo 직후 한동안 예전 재생 시간을 돌려주기 때문에,
@@ -129,11 +167,44 @@ const POSITION_KEY = 'om-position';
 export const usePlayer = create<PlayerState>()(
   persist(
     (set, get) => {
+      /** 대기열의 Spotify 곡을 YouTube 곡으로 바꾼다. 못 찾으면 false */
+      const resolveItem = async (uid: string): Promise<boolean> => {
+        const item = get().queue.find((q) => q.uid === uid);
+        if (!item || !isSpotifyId(item.track.videoId)) return !!item;
+        const found = await matchSpotify(item.track);
+        if (!found) return false;
+        set({ queue: get().queue.map((q) => (q.uid === uid ? { ...q, track: found } : q)) });
+        return true;
+      };
+
+      /** 다음 몇 곡을 미리 찾아 둔다 (곡 사이에 기다리지 않게, 썸네일도 채워지게) */
+      const prefetch = () => {
+        const { queue, index } = get();
+        for (const q of queue.slice(index + 1, index + 3)) {
+          if (isSpotifyId(q.track.videoId)) resolveItem(q.uid).catch(() => {});
+        }
+      };
+
       /** 현재 인덱스의 곡을 엔진에 로드 */
       const loadCurrent = (autoplay = true, start = 0) => {
         const item = get().queue[get().index];
         if (!item) {
           set({ status: 'idle', position: 0, duration: 0 });
+          return;
+        }
+        if (isSpotifyId(item.track.videoId)) {
+          // YouTube Music에서 같은 곡을 찾은 뒤 다시 로드
+          engine?.pause();
+          set({ status: autoplay ? 'loading' : 'paused', position: start, duration: item.track.duration ?? 0, playingId: null });
+          resolveItem(item.uid)
+            .then((ok) => {
+              if (get().queue[get().index]?.uid !== item.uid) return;
+              if (ok) loadCurrent(autoplay, start);
+              else get()._onEngineError(NOT_FOUND_ERROR);
+            })
+            .catch(() => {
+              if (get().queue[get().index]?.uid === item.uid) get()._onEngineError(NOT_FOUND_ERROR);
+            });
           return;
         }
         cancelPendingSeek();
@@ -142,6 +213,7 @@ export const usePlayer = create<PlayerState>()(
         const dur = src.duration ?? item.track.duration;
         set({ status: autoplay ? 'loading' : 'paused', position: start, duration: dur ?? 0, playingId: src.videoId });
         engine?.load(src.videoId, { autoplay, start, durationHint: dur });
+        prefetch();
       };
 
       const goTo = (index: number, autoplay = true) => {
@@ -405,12 +477,15 @@ export const usePlayer = create<PlayerState>()(
             nextIndex = 0;
           }
           const item = get().queue[nextIndex];
+          // 아직 YouTube에서 찾지 못한 Spotify 곡은 크로스페이드 없이 넘어간다
+          if (isSpotifyId(item.track.videoId)) return goTo(nextIndex);
           cancelPendingSeek();
           consecutiveErrors = 0;
           const src = resolveSource(item.track);
           const dur = src.duration ?? item.track.duration;
           set({ index: nextIndex, position: 0, duration: dur ?? 0, status: 'loading', playingId: src.videoId });
           engine.crossfade(src.videoId, seconds, { durationHint: dur });
+          prefetch();
         },
 
         switchSource: (videoId, duration, mapTime) => {
@@ -462,7 +537,9 @@ export const usePlayer = create<PlayerState>()(
           const s = get();
           const item = s.current();
           const reason =
-            code === 101 || code === 150 || code === 153
+            code === NOT_FOUND_ERROR
+              ? 'YouTube Music에서 같은 곡을 찾지 못했습니다'
+              : code === 101 || code === 150 || code === 153
               ? '소유자가 다른 웹사이트에서의 재생을 허용하지 않은 곡입니다'
               : code === 100
                 ? '삭제되었거나 비공개인 곡입니다'

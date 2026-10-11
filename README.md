@@ -11,6 +11,7 @@ YouTube Music 재생목록 링크를 붙여넣으면 **YouTube Music과 같은 �
 | 영역 | 기능 |
 |---|---|
 | 링크 열기 | `music.youtube.com/playlist?list=…`, `/browse/MPRE…`(앨범), `/watch?v=…&list=…`, `youtube.com`·`youtu.be` 재생목록 링크. 상단 입력칸에 붙여넣으면 바로 열립니다. 주소의 `music.youtube.com` 부분만 이 사이트 주소로 바꿔도 같은 페이지가 열립니다. |
+| Spotify · SoundCloud | **Spotify**: 재생목록·앨범·곡 링크(`open.spotify.com/…`, `spotify:playlist:…`, `spotify.link` 짧은 주소)를 열 수 있습니다. Spotify는 외부 사이트에서 전체 곡을 틀 수 없어서, 곡을 재생할 때 YouTube Music에서 같은 곡(제목·가수·길이 비교)을 찾아 대신 틉니다. 다음 두 곡은 미리 찾아 두고, 못 찾은 곡은 알림 후 건너뜁니다. 로그인 없이 볼 수 있는 임베드 페이지를 읽기 때문에 재생목록은 **앞 100곡까지만** 불러오며, Spotify 카탈로그 검색은 API 키가 필요해 지원하지 않습니다. **SoundCloud**: 검색(검색 결과의 **SoundCloud** 칩)과 곡·재생목록(sets)·아티스트 링크(`soundcloud.com/…`, `on.soundcloud.com/…`)를 지원하며, SoundCloud 공식 임베드 플레이어로 직접 재생합니다(동영상 화면에는 SoundCloud 플레이어가 보입니다). 미리듣기만 허용되거나 임베드가 막힌 곡은 목록에서 빠집니다. |
 | 재생목록 등록 | 링크로 연 재생목록·앨범은 사이드바(모바일은 홈)에 자동 등록되어 언제든 다시 불러올 수 있습니다. 읽기 전용이며, ✕ 버튼이나 메뉴로 삭제(실행취소 가능)합니다. |
 | 노래 검색 | 상단 입력칸에 검색어를 입력하면 노래/동영상을 검색하고, 링크를 붙여넣으면 바로 엽니다. 검색 결과의 곡을 누르면 그 곡만 단순 재생합니다. |
 | 내 재생목록 | 사이트에서 직접 만든 재생목록. 곡 메뉴의 **재생목록에 저장**으로 추가하고, 메뉴로 삭제, 끌어서 순서 변경, 이름 바꾸기, 재생목록 삭제(확인 창 + 실행취소)를 할 수 있습니다. 불러온 재생목록은 **내 재생목록으로 복사**할 수 있습니다. |
@@ -29,7 +30,7 @@ YouTube Music 재생목록 링크를 붙여넣으면 **YouTube Music과 같은 �
 
 ```
 shared/   서버·클라이언트 공용 타입과 링크 파서
-server/   API (Hono) — app.ts(라우트: 재생목록·앨범·검색·가사·다음 트랙), youtube.ts(youtubei.js), normalize.ts(응답 정규화), mock.ts(목 데이터), node.ts(Node 실행)
+server/   API (Hono) — app.ts(라우트: 재생목록·앨범·검색·가사·다음 트랙·Spotify 곡 매칭), youtube.ts(youtubei.js), spotify.ts·soundcloud.ts(다른 서비스 목록·검색), normalize.ts(응답 정규화), mock.ts(목 데이터), node.ts(Node 실행)
 worker/   Cloudflare Worker 진입점
 src/      React 프론트엔드 (Vite)
 ```
@@ -79,4 +80,5 @@ npm run dev:mock   # YouTube 접속 없이 목 데이터로 UI 확인
 - 브라우저 자동재생 정책 때문에 `/watch` 링크로 처음 들어오면 재생 버튼을 한 번 눌러야 합니다.
 - YouTube 내부 API(InnerTube)는 예고 없이 바뀔 수 있습니다. 정보가 안 나오면 `youtubei.js`를 업데이트해 보세요.
 - Cloudflare 무료 플랜은 요청당 CPU 시간이 짧습니다. 매우 큰 재생목록에서 오류가 나면 Workers 유료 플랜이나 Node 서버(`npm start`)로 배포하는 방법을 검토하세요.
+- SoundCloud는 새 API 키 발급이 막혀 있어 soundcloud.com 웹 앱이 쓰는 공개 `client_id`를 찾아 씁니다(바뀌면 자동으로 다시 찾음). Spotify는 공식 API 없이 임베드 페이지를 읽습니다. 두 방식 모두 비공식이라 예고 없이 막힐 수 있습니다.
 - 개인 학습·비상업 용도로 만든 프로젝트입니다. YouTube 서비스 약관을 지켜서 사용하세요.

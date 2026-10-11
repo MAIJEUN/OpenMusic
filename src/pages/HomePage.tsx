@@ -15,7 +15,7 @@ export function HomePage() {
       <section className="hero">
         <h1 className="hero__title">재생목록 링크를 붙여넣어 바로 들어보세요</h1>
         <p className="hero__desc">
-          YouTube Music 재생목록·앨범 링크를 열면 사이드바에 등록돼요. 노래를 검색해서 바로 듣거나, 내 재생목록을 만들어 모아 둘 수도 있어요.
+          YouTube Music·Spotify·SoundCloud 재생목록이나 앨범 링크를 열면 사이드바에 등록돼요. 노래를 검색해서 바로 듣거나, 내 재생목록을 만들어 모아 둘 수도 있어요.
         </p>
         <LinkForm />
       </section>

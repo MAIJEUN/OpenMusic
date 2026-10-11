@@ -52,7 +52,9 @@ export function localInfo(p: LocalPlaylist): CollectionInfo {
     title: p.title,
     subtitle: `내 재생목록 • ${p.tracks.length}곡`,
     thumbnail: p.tracks[0]?.thumbnail,
-    thumbs: p.tracks.slice(0, 4).map((t) => t.thumbnail ?? `https://i.ytimg.com/vi/${t.videoId}/mqdefault.jpg`),
+    thumbs: p.tracks
+      .slice(0, 4)
+      .map((t) => t.thumbnail ?? (t.videoId.includes(':') ? '' : `https://i.ytimg.com/vi/${t.videoId}/mqdefault.jpg`)),
   };
 }
 

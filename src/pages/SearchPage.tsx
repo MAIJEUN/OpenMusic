@@ -10,12 +10,13 @@ import { player } from '../store/player';
 const FILTERS: { id: SearchFilter; label: string }[] = [
   { id: 'song', label: '노래' },
   { id: 'video', label: '동영상' },
+  { id: 'soundcloud', label: 'SoundCloud' },
 ];
 
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const q = params.get('q')?.trim() ?? '';
-  const filter: SearchFilter = params.get('filter') === 'video' ? 'video' : 'song';
+  const filter: SearchFilter = FILTERS.find((f) => f.id === params.get('filter'))?.id ?? 'song';
   const { loading, data, error, reload } = useAsync(() => (q ? api.search(q, filter) : Promise.resolve(null)), [q, filter]);
 
   const setFilter = (f: SearchFilter) => {
@@ -40,7 +41,7 @@ export function SearchPage() {
       </div>
 
       {!q ? (
-        <div className="panel-empty">듣고 싶은 노래나 아티스트를 검색해 보세요. 재생목록 링크를 붙여넣어도 돼요.</div>
+        <div className="panel-empty">듣고 싶은 노래나 아티스트를 검색해 보세요. YouTube Music·Spotify·SoundCloud 재생목록이나 곡 링크를 붙여넣어도 돼요.</div>
       ) : loading ? (
         <Loading />
       ) : error ? (
@@ -50,7 +51,7 @@ export function SearchPage() {
       ) : (
         <section>
           <h2 className="section-title">
-            '{q}' {filter === 'video' ? '동영상' : '노래'}
+            '{q}' {FILTERS.find((f) => f.id === filter)?.label}
           </h2>
           {/* 곡을 누르면 그 곡만 재생 (재생목록 없이 단순 재생) */}
           <TrackList

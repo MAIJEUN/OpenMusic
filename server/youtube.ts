@@ -3,13 +3,15 @@
  * 재생 자체는 브라우저의 YouTube IFrame Player가 담당하고, 서버는 메타데이터만 가져온다.
  */
 import { Innertube, YTMusic, YTNodes } from 'youtubei.js';
-import type { ArtistRef, CollectionDetail, Counterpart, ContinuationPage, Lyrics, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
+import type { ArtistRef, CollectionDetail, Counterpart, ContinuationPage, Lyrics, MatchQuery, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
 import { stripVL } from '../shared/links.js';
 import { fetchLyrics, titleCandidates, type LyricsQuery } from './lyrics.js';
 import { findAll } from './json.js';
 import { rawContinuation, rawPlaylist } from './rawPlaylist.js';
 import { bestThumb, parseDuration, parseRuns, runsOf, textOf, trackFromListItem, trackFromPanelVideo, type TrackFallback } from './normalize.js';
 import type { Provider } from './provider.js';
+import { scCollection, scSearch } from './soundcloud.js';
+import { spotifyCollection } from './spotify.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any;
@@ -97,6 +99,8 @@ function tracksFrom(items: AnyNode, fallback: TrackFallback = {}): Track[] {
 }
 
 async function getPlaylist(id: string): Promise<CollectionDetail> {
+  if (id.startsWith('sp:')) return spotifyCollection(id);
+  if (id.startsWith('sc:')) return scCollection(id);
   // 가벼운 원본 JSON 해석을 먼저 시도하고, 안 되면 youtubei.js 파서로
   try {
     const raw = await rawPlaylist(await yt(), id);
@@ -290,6 +294,7 @@ async function counterpart(videoId: string): Promise<Counterpart | null> {
 const artistNamesOf = (t: Track) => (t.artists ?? []).map((a) => a.name).join(', ');
 
 async function search(query: string, filter: SearchFilter): Promise<SearchResult> {
+  if (filter === 'soundcloud') return { query, filter, tracks: await scSearch(query) };
   const music = (await yt()).music;
   const res: AnyNode = await music.search(query, { type: filter });
   const tracks: Track[] = [];
@@ -307,7 +312,55 @@ async function search(query: string, filter: SearchFilter): Promise<SearchResult
   return { query, filter, tracks };
 }
 
+/**
+ * 다른 서비스(Spotify) 곡과 같은 YouTube Music 노래 찾기.
+ * 제목이 같거나 비슷하고, 가수가 겹치고, 길이가 비슷한 노래를 고른다. 노래가 없으면 뮤직비디오도 본다.
+ */
+async function match(q: MatchQuery): Promise<Track | null> {
+  // Spotify 제목의 '(feat. …)', '- Remastered 2011' 같은 꾸밈말은 YouTube Music 제목과 다를 수 있어 떼고 찾는다
+  const title =
+    q.title
+      .replace(/\s*[([](feat|ft|with)\.?\s[^)\]]*[)\]]/gi, '')
+      .replace(/\s+-\s+[^-]*(remaster|version|live|mono|stereo|edit|mix)[^-]*$/i, '')
+      .trim() || q.title;
+  const keys = [...new Set([...normTitles(title, q.artist), ...normTitles(q.title, q.artist)])];
+  const artistKeys = q.artist
+    .split(/\s*,\s*/)
+    .map((a) => a.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ''))
+    .filter(Boolean);
+  const rate = (t: Track, i: number) => {
+    const ks = normTitles(t.title, artistNamesOf(t));
+    const exact = ks.some((k) => keys.includes(k));
+    const similar = exact || ks.some((k) => keys.some((key) => k.length > 1 && key.length > 1 && (k.includes(key) || key.includes(k))));
+    if (!similar) return null;
+    const names = artistNamesOf(t).toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+    const artistOk = !artistKeys.length || artistKeys.some((a) => names.includes(a) || (names.length > 1 && a.includes(names)));
+    const diff = q.duration && t.duration ? Math.abs(q.duration - t.duration) : 0;
+    return { t, artistOk, diff, score: (exact ? 30 : 10) - Math.min(diff, 60) - i * 2 - (t.isVideo ? 15 : 0) };
+  };
+  type Rated = NonNullable<ReturnType<typeof rate>>;
+  const best = (list: Rated[]) => list.sort((a, b) => b.score - a.score)[0]?.t ?? null;
+  const others: Rated[] = [];
+  // 같은 가수의 노래 → 같은 가수의 영상 → (그래도 없으면) 다른 사람이 올린 같은 곡 순서
+  for (const filter of ['song', 'video'] as const) {
+    const found = await search(`${title} ${q.artist.split(',')[0]}`.trim(), filter);
+    const rated = found.tracks
+      .slice(0, 10)
+      .map(rate)
+      .filter((x): x is Rated => !!x);
+    const own = best(rated.filter((x) => x.artistOk));
+    if (own) return own;
+    // 커버·피아노 버전 같은 건 길이가 거의 같고 제목에 다른 버전 표시가 없을 때만
+    others.push(...rated.filter((x) => x.diff <= 3 && !VARIANT_TITLE.test(x.t.title) && !VARIANT_TITLE.test(artistNamesOf(x.t))));
+  }
+  return best(others);
+}
+
+/** 다른 버전(커버·연주곡 등)으로 보이는 제목·채널 */
+const VARIANT_TITLE = /(cover|커버|カバー|piano|피아노|instrumental|inst\.|karaoke|노래방|remix|lofi|lo-fi|sped|slowed|nightcore|8d|acoustic|music box|orgel|오르골)/i;
+
 export const youtubeProvider: Provider = {
+  match,
   playlist: getPlaylist,
   continuation: getContinuation,
   album: getAlbum,

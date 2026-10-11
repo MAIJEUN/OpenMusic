@@ -10,7 +10,16 @@ import type { Provider } from './provider.js';
 const MIN = 60_000;
 
 /** 이미지 중계를 허용하는 호스트 (YouTube/Google 썸네일 서버) */
-const IMAGE_HOSTS = [/^i\d?\.ytimg\.com$/, /^(lh\d|yt\d)\.(googleusercontent|ggpht)\.com$/, /\.googleusercontent\.com$/, /\.ggpht\.com$/];
+const IMAGE_HOSTS = [
+  /^i\d?\.ytimg\.com$/,
+  /^(lh\d|yt\d)\.(googleusercontent|ggpht)\.com$/,
+  /\.googleusercontent\.com$/,
+  /\.ggpht\.com$/,
+  // SoundCloud·Spotify 앨범 아트
+  /^i\d?\.sndcdn\.com$/,
+  /^i\.scdn\.co$/,
+  /^image-cdn-[\w-]+\.spotifycdn\.com$/,
+];
 
 class HttpError extends Error {
   constructor(
@@ -75,7 +84,8 @@ export function createApp(provider: Provider, config: ServerConfig) {
 
   app.get('/search', ttl(600), async (c) => {
     const q = need(c.req.query('q'), 'q');
-    const filter: SearchFilter = c.req.query('filter') === 'video' ? 'video' : 'song';
+    const f = c.req.query('filter');
+    const filter: SearchFilter = f === 'video' || f === 'soundcloud' ? f : 'song';
     return c.json(await cached(`search:${filter}:${q}`, 10 * MIN, () => provider.search(q, filter)));
   });
 
@@ -90,6 +100,13 @@ export function createApp(provider: Provider, config: ServerConfig) {
     const q = { title: str('title'), artist: str('artist'), album: str('album'), duration, original };
     const lyrics = await cached(`lyrics:${id}:${origId ?? ''}`, 60 * MIN, () => provider.lyrics(id, q));
     return c.json(lyrics);
+  });
+
+  app.get('/match', ttl(86400), async (c) => {
+    const title = need(c.req.query('title'), 'title').slice(0, 200);
+    const artist = (c.req.query('artist') ?? '').trim().slice(0, 200);
+    const duration = Number(c.req.query('duration')) || undefined;
+    return c.json(await cached(`match:${title}:${artist}:${duration ?? ''}`, 24 * 60 * MIN, () => provider.match({ title, artist, duration })));
   });
 
   app.get('/counterpart/:id', ttl(86400), async (c) => {
@@ -125,7 +142,7 @@ export function createApp(provider: Provider, config: ServerConfig) {
     console.error('[api]', c.req.path, err.message);
     c.header('Cache-Control', 'no-store');
     return c.json(
-      { error: status === 502 ? `YouTube Music에서 정보를 가져오지 못했습니다. (${err.message})` : err.message },
+      { error: status === 502 ? `음악 정보를 가져오지 못했습니다. (${err.message})` : err.message },
       status as 400,
     );
   });

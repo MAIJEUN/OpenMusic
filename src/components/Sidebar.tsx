@@ -105,7 +105,7 @@ export function Sidebar() {
         {playlists.map((p) => item(localInfo(p)))}
         {saved.map((c) => item(c, () => removeLinked(c)))}
         {saved.length === 0 && playlists.length === 0 && !collapsed && (
-          <p className="sidebar__empty">새 재생목록을 만들거나, YouTube Music 재생목록 링크를 열면 여기에 표시돼요.</p>
+          <p className="sidebar__empty">새 재생목록을 만들거나, YouTube Music·Spotify·SoundCloud 재생목록 링크를 열면 여기에 표시돼요.</p>
         )}
       </div>
     </nav>

@@ -21,7 +21,10 @@ interface Props {
 }
 
 export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true, onPlay, playlistId }: Props) {
-  const isCurrent = usePlayer((s) => s.queue[s.index]?.track.videoId === track.videoId);
+  const isCurrent = usePlayer((s) => {
+    const cur = s.queue[s.index]?.track;
+    return !!cur && (cur.videoId === track.videoId || cur.sourceId === track.videoId);
+  });
   const isPlaying = usePlayer((s) => isCurrent && (s.status === 'playing' || s.status === 'buffering' || s.status === 'loading'));
   const liked = useLibrary((s) => s.liked.some((t) => t.videoId === track.videoId));
 

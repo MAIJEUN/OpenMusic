@@ -4,7 +4,7 @@ import { artistNames } from '../lib/format';
 import { thumbSize } from '../lib/thumb';
 import { attachEngine, sourceOf, usePlayer } from '../store/player';
 import { toast, useUi } from '../store/ui';
-import { DualEngine, FakeEngine, YouTubeEngine, type Engine, type EngineEvents } from './engine';
+import { DualEngine, FakeEngine, SwitchEngine, YouTubeEngine, type Engine, type EngineEvents } from './engine';
 import { useSmartTransitions } from './useSmartTransitions';
 import { useAudioVersion } from './useAudioVersion';
 import { pausedInBackground, useBackgroundPlayback } from './useBackgroundPlayback';
@@ -42,7 +42,7 @@ export function PlayerHost() {
       .then((cfg) => {
         if (cancelled || engineRef.current || !hostRef.current) return;
         // 플레이어 두 개를 번갈아 써서 크로스페이드를 지원한다
-        const engine: Engine = new DualEngine((ev) => (cfg.mock ? new FakeEngine(ev) : new YouTubeEngine(ev)), events);
+        const engine: Engine = new DualEngine((ev) => (cfg.mock ? new FakeEngine(ev) : new SwitchEngine((e) => new YouTubeEngine(e), ev)), events);
         engine.mount(hostRef.current);
         const { volume, muted, queue, index, position } = usePlayer.getState();
         engine.setVolume(volume);

@@ -163,6 +163,8 @@ export function paletteDistance(a: Palette, b: Palette): number {
  * 탭 공유 없이도 영상 진행에 따라 색을 바꾸는 데 쓴다.
  */
 export function videoFrameUrls(videoId: string, mock = false): string[] {
+  // SoundCloud 곡 등 YouTube 영상이 아니면 장면 썸네일이 없다
+  if (videoId.includes(':')) return [];
   if (mock) return [1, 2, 3].map((n) => `/api/mock/img/${videoId}-f${n}.svg`);
   return [1, 2, 3].map((n) => `https://i.ytimg.com/vi/${videoId}/hq${n}.jpg`);
 }

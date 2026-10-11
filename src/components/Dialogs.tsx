@@ -46,7 +46,7 @@ export function LinkForm({ autoFocus, onDone }: { autoFocus?: boolean; onDone?: 
     e.preventDefault();
     const target = parseLink(value);
     if (!target) {
-      setError('YouTube Music 또는 YouTube 재생목록 링크를 입력해 주세요.');
+      setError('YouTube Music · YouTube · Spotify · SoundCloud 재생목록이나 곡 링크를 입력해 주세요.');
       return;
     }
     setError('');
@@ -76,7 +76,7 @@ export function LinkForm({ autoFocus, onDone }: { autoFocus?: boolean; onDone?: 
               navigate(targetToPath(target));
             }
           }}
-          placeholder="https://music.youtube.com/playlist?list=..."
+          placeholder="YouTube Music · Spotify · SoundCloud 링크"
           aria-label="재생목록 링크"
           spellCheck={false}
         />
@@ -326,7 +326,7 @@ export function Dialogs() {
       return (
         <Modal title="재생목록 링크 열기" onClose={close}>
           <p className="modal__desc">
-            YouTube Music 재생목록이나 앨범 링크를 붙여넣으세요. 연 재생목록은 사이드바에 등록됩니다. YouTube 재생목록 링크도 사용할 수 있어요.
+            YouTube Music 재생목록이나 앨범 링크를 붙여넣으세요. 연 재생목록은 사이드바에 등록됩니다. YouTube, Spotify(재생목록·앨범·곡), SoundCloud(곡·재생목록·아티스트) 링크도 사용할 수 있어요.
           </p>
           <LinkForm autoFocus onDone={close} />
         </Modal>
