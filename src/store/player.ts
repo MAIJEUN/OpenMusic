@@ -10,6 +10,15 @@ import { toast } from './ui';
 export interface QueueItem {
   uid: string;
   track: Track;
+  /** 재생목록에서 온 곡이면 그 재생목록 경로 (원본이 바뀌면 대기열에도 반영하기 위해) */
+  from?: string;
+}
+
+/** 원본 재생목록 변경을 대기열에 반영한 결과 */
+export interface SyncResult {
+  added: number;
+  removed: number;
+  reordered: boolean;
 }
 
 export type Repeat = 'off' | 'all' | 'one';
@@ -71,6 +80,11 @@ interface PlayerState {
   crossfadeNext: (seconds: number) => void;
   /** 같은 곡의 다른 버전(노래 ↔ 뮤직비디오)으로 바꿔 튼다. mapTime은 지금 위치 → 새 영상 위치 */
   switchSource: (videoId: string, duration?: number, mapTime?: (t: number) => number) => void;
+  /**
+   * 원본 재생목록(path)의 최신 곡 목록을 대기열에 반영한다 (추가·삭제·순서 변경).
+   * 지금 재생 중인 곡은 원본에서 빠져도 끝까지 재생한다. 바뀐 게 없으면 null
+   */
+  syncFromSource: (path: string, latest: Track[]) => SyncResult | null;
 
   /* 엔진 → 스토어 */
   _onEngineState: (s: EngineState) => void;
@@ -154,7 +168,10 @@ export function attachEngine(e: Engine) {
   engine = e;
 }
 
-const toItems = (tracks: Track[]): QueueItem[] => tracks.map((track) => ({ uid: uid(), track }));
+const toItems = (tracks: Track[], from?: string): QueueItem[] => tracks.map((track) => ({ uid: uid(), track, ...(from ? { from } : {}) }));
+
+/** 같은 곡인지 비교할 키 (Spotify 곡은 YouTube 곡으로 바뀌어도 원래 ID로) */
+const trackKey = (t: Track) => t.sourceId ?? t.videoId;
 
 /** first를 맨 앞에 두고 나머지를 무작위로 섞는다 */
 function shuffleWithFirst(items: QueueItem[], first: QueueItem | undefined): QueueItem[] {
@@ -257,7 +274,7 @@ export const usePlayer = create<PlayerState>()(
 
         playTracks: (tracks, startIndex = 0, source = null, opts = {}) => {
           if (!tracks.length) return;
-          let items = toItems(tracks);
+          let items = toItems(tracks, source?.path);
           let index = Math.min(Math.max(0, startIndex), items.length - 1);
           const shuffle = opts.shuffle ?? get().shuffle;
           let originalOrder: string[] | null = null;
@@ -497,6 +514,68 @@ export const usePlayer = create<PlayerState>()(
           cancelPendingSeek();
           set({ playingId: videoId, position: start, ...(duration ? { duration } : {}), status: playing ? 'loading' : s.status });
           engine.load(videoId, { autoplay: playing, start, durationHint: duration });
+        },
+
+        syncFromSource: (path, latest) => {
+          const s = get();
+          const current = s.queue[s.index];
+          // 원래 순서 (셔플 중이면 셔플 전 순서)
+          const byUid = new Map(s.queue.map((q) => [q.uid, q]));
+          const natural = s.shuffle && s.originalOrder ? s.originalOrder.map((u) => byUid.get(u)).filter((q): q is QueueItem => !!q) : s.queue;
+          for (const q of s.queue) if (!natural.includes(q)) natural.push(q);
+          if (!natural.some((q) => q.from === path)) return null;
+
+          // 최신 목록 순서대로: 이미 있던 곡은 그대로(Spotify 곡은 찾아 둔 YouTube 곡 유지), 없던 곡은 새로
+          const pool = new Map<string, QueueItem[]>();
+          for (const q of natural) {
+            if (q.from !== path) continue;
+            const k = trackKey(q.track);
+            pool.set(k, [...(pool.get(k) ?? []), q]);
+          }
+          let added = 0;
+          const ordered = latest.map((t) => {
+            const old = pool.get(trackKey(t))?.shift();
+            if (old) return old.track.sourceId ? old : { ...old, track: t };
+            added++;
+            return { uid: uid(), track: t, from: path };
+          });
+          const kept = new Set(ordered.map((q) => q.uid));
+          const removedItems = natural.filter((q) => q.from === path && !kept.has(q.uid) && q.uid !== current?.uid);
+
+          // 직접 추가한 곡(과 원본에서 빠졌지만 재생 중인 곡)은 바로 앞에 있던 재생목록 곡 뒤에 그대로 둔다
+          const anchored = new Map<string, QueueItem[]>();
+          let anchor = '';
+          for (const q of natural) {
+            if (q.from === path && kept.has(q.uid)) anchor = q.uid;
+            else if (q.from !== path || q.uid === current?.uid) anchored.set(anchor, [...(anchored.get(anchor) ?? []), q]);
+          }
+          const newNatural = [...(anchored.get('') ?? []), ...ordered.flatMap((q) => [q, ...(anchored.get(q.uid) ?? [])])];
+
+          const before = natural.filter((q) => !removedItems.includes(q)).map((q) => q.uid);
+          const after = newNatural.filter((q) => byUid.has(q.uid)).map((q) => q.uid);
+          const reordered = before.join() !== after.join();
+          const metaChanged = ordered.some((q) => byUid.has(q.uid) && byUid.get(q.uid)!.track !== q.track && JSON.stringify(byUid.get(q.uid)!.track) !== JSON.stringify(q.track));
+          if (!added && !removedItems.length && !reordered && !metaChanged) return null;
+
+          const updated = new Map(newNatural.map((q) => [q.uid, q]));
+          let queue: QueueItem[];
+          let originalOrder = s.originalOrder;
+          if (s.shuffle) {
+            // 셔플 중: 지금 순서는 유지하고, 빠진 곡은 지우고, 새 곡은 아직 안 들은 쪽에 무작위로 끼운다
+            queue = s.queue.filter((q) => updated.has(q.uid)).map((q) => updated.get(q.uid)!);
+            const at = Math.max(0, queue.findIndex((q) => q.uid === current?.uid));
+            for (const q of newNatural.filter((x) => !byUid.has(x.uid))) {
+              const pos = at + 1 + Math.floor(Math.random() * (queue.length - at));
+              queue.splice(pos, 0, q);
+            }
+            originalOrder = newNatural.map((q) => q.uid);
+          } else {
+            queue = newNatural;
+          }
+          const index = current ? Math.max(0, queue.findIndex((q) => q.uid === current.uid)) : 0;
+          set({ queue, index, originalOrder });
+          // 대기열이 비어 있던 경우가 아니면 재생은 그대로 이어진다
+          return { added, removed: removedItems.length, reordered };
         },
 
         _onEngineState: (state) => {

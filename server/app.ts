@@ -60,9 +60,18 @@ export function createApp(provider: Provider, config: ServerConfig) {
 
   app.get('/config', (c) => c.json(config));
 
-  app.get('/playlist/:id', ttl(300), async (c) => {
+  app.get('/playlist/:id', async (c) => {
     const id = need(c.req.param('id'), 'id');
-    return c.json(await cached(`playlist:${id}`, 5 * MIN, () => provider.playlist(id)));
+    // fresh=1: 원본 재생목록이 바뀌었는지 확인할 때 — 캐시를 건너뛰고 새로 받는다 (받은 결과는 캐시에 넣어 둔다)
+    if (c.req.query('fresh') === '1') {
+      const value = await provider.playlist(id);
+      cache.set(`playlist:${id}`, { value, expires: Date.now() + 5 * MIN });
+      c.header('Cache-Control', 'no-store');
+      return c.json(value);
+    }
+    const value = await cached(`playlist:${id}`, 5 * MIN, () => provider.playlist(id));
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json(value);
   });
 
   app.get('/continuation', ttl(300), async (c) => {

@@ -7,6 +7,7 @@ import { toast, useUi } from '../store/ui';
 import { DualEngine, FakeEngine, SwitchEngine, YouTubeEngine, type Engine, type EngineEvents } from './engine';
 import { useSmartTransitions } from './useSmartTransitions';
 import { useAudioVersion } from './useAudioVersion';
+import { usePlaylistSync } from './usePlaylistSync';
 import { pausedInBackground, useBackgroundPlayback } from './useBackgroundPlayback';
 import { anchorPause, anchorPlay } from './mediaAnchor';
 
@@ -96,6 +97,7 @@ export function PlayerHost() {
   useDocumentTitle();
   useSmartTransitions();
   useAudioVersion();
+  usePlaylistSync();
   useBackgroundPlayback();
 
   return <div ref={hostRef} className="player-host" aria-hidden />;
