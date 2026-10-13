@@ -91,6 +91,13 @@ la la la, 다시 한 번 더
 export const mockProvider: Provider = {
   async playlist(id) {
     await delay();
+    // PLmockLive: 20초마다 원본이 바뀌는 재생목록 (원본 변경 반영 확인용) — 2번째 곡 삭제, 새 곡 추가, 마지막 두 곡 순서 바꿈
+    if (id === 'PLmockLive') {
+      const base = tracksRange(3000, 10);
+      const changed = Math.floor(Date.now() / 20_000) % 2 === 1;
+      const tracks = changed ? [base[0], base[2], makeTrack(3999), ...base.slice(3, 8), base[9], base[8]] : base;
+      return { kind: 'playlist', id, title: '바뀌는 재생목록', subtitle: '재생목록', thumbnail: img('pl-live'), tracks };
+    }
     // Spotify·SoundCloud 링크: 곡 ID만 그 서비스 형식으로 바꾼 목록
     if (id.startsWith('sp:') || id.startsWith('sc:')) {
       const sp = id.startsWith('sp:');

@@ -57,6 +57,12 @@ const enc = encodeURIComponent;
 export const api = {
   config: () => cachedGet<ServerConfig>('/config', Infinity),
   playlist: (id: string) => cachedGet<CollectionDetail>(`/playlist/${enc(id)}`),
+  /** 캐시 없이 원본 재생목록을 새로 받는다 (받은 결과는 일반 요청 캐시에도 넣어 둔다) */
+  playlistFresh: async (id: string) => {
+    const detail = await get<CollectionDetail>(`/playlist/${enc(id)}?fresh=1`);
+    memo.set(`/playlist/${enc(id)}`, { at: Date.now(), promise: Promise.resolve(detail) });
+    return detail;
+  },
   continuation: (token: string) => cachedGet<ContinuationPage>(`/continuation?token=${enc(token)}`),
   album: (id: string) => cachedGet<CollectionDetail>(`/album/${enc(id)}`),
   upNext: (videoId?: string, list?: string) =>

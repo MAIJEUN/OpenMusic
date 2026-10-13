@@ -14,6 +14,7 @@ import { formatTotal } from '../lib/format';
 import { LIKED_ID, isLocalId, useLibrary, type CollectionInfo } from '../store/library';
 import { LikedPage, LocalPlaylistPage } from './MyPlaylistPage';
 import { player, usePlayer } from '../store/player';
+import { applyLatest } from '../player/usePlaylistSync';
 import { toast } from '../store/ui';
 
 export function PlaylistRoute() {
@@ -46,8 +47,36 @@ async function fetchCollection(kind: 'playlist' | 'album' | 'radio', id: string)
   };
 }
 
+/** 화면에 보이는 목록이 같은지 (곡 순서·제목·썸네일) */
+const sameDetail = (a: CollectionDetail, b: CollectionDetail) =>
+  a.title === b.title &&
+  a.thumbnail === b.thumbnail &&
+  a.tracks.length === b.tracks.length &&
+  a.tracks.every((t, i) => t.videoId === b.tracks[i].videoId && t.title === b.tracks[i].title);
+
 function RemoteCollection({ kind, id }: { kind: 'playlist' | 'album' | 'radio'; id: string }) {
-  const { loading, data, error, reload } = useAsync(() => fetchCollection(kind, id), [kind, id]);
+  const { loading, data: cachedData, error, reload } = useAsync(() => fetchCollection(kind, id), [kind, id]);
+  // 캐시된 목록을 먼저 보여주고, 원본을 새로 받아 바뀌었으면 바꿔 보여준다 (원본 재생목록의 추가·삭제·순서 변경 반영)
+  const [fresh, setFresh] = useState<CollectionDetail | null>(null);
+  const data = fresh ?? cachedData;
+  const path = `/playlist?list=${encodeURIComponent(cachedData?.id ?? id)}`;
+  useEffect(() => {
+    if (!cachedData || kind !== 'playlist') return;
+    let alive = true;
+    api
+      .playlistFresh(id)
+      .then((d) => {
+        if (!alive) return;
+        // 한 페이지로 끝나는 목록이 그대로면 화면은 그대로 두고 대기열만 확인
+        if (!d.continuation && !cachedData.continuation && sameDetail(d, cachedData)) applyLatest(path, d.tracks);
+        else setFresh(d);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cachedData]);
   const [tracks, setTracks] = useState<Track[] | null>(null);
   const [complete, setComplete] = useState(false);
   const fullRef = useRef<Promise<Track[]> | null>(null);
@@ -61,14 +90,18 @@ function RemoteCollection({ kind, id }: { kind: 'playlist' | 'album' | 'radio'; 
     if (!resumeFrom) setTracks(data.tracks);
     setFailed(null);
     setComplete(!data.continuation);
+    // 새로 받은 원본 목록이면 전체를 받은 뒤 재생 중인 대기열에도 반영
+    const isFresh = data === fresh;
     if (!data.continuation) {
       fullRef.current = Promise.resolve(data.tracks);
+      if (isFresh) applyLatest(path, data.tracks);
       return;
     }
     let alive = true;
     fullRef.current = loadAllTracks(data, (t) => alive && setTracks(t), resumeFrom)
       .then((all) => {
         if (alive) setComplete(true);
+        if (alive && isFresh && !resumeFrom) applyLatest(path, all);
         return all;
       })
       .catch((err) => {
@@ -97,14 +130,13 @@ function RemoteCollection({ kind, id }: { kind: 'playlist' | 'album' | 'radio'; 
   if (loading) return <Loading />;
   if (error || !data) return <ErrorView message={error} onRetry={reload} />;
 
-  const path = data.kind === 'album' ? `/browse/${data.id}` : `/playlist?list=${encodeURIComponent(data.id)}`;
   return (
     <CollectionView
       detail={data}
       tracks={tracks ?? data.tracks}
       complete={complete}
       getAllTracks={() => fullRef.current ?? Promise.resolve(tracks ?? data.tracks)}
-      path={path}
+      path={data.kind === 'album' ? `/browse/${data.id}` : `/playlist?list=${encodeURIComponent(data.id)}`}
       registrable={data.kind !== 'radio'}
       onResume={failed ? () => setAttempt((n) => n + 1) : undefined}
     />
