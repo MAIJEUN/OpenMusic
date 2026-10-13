@@ -3,9 +3,9 @@ import { MdAdd, MdClose } from 'react-icons/md';
 import { useNavigate } from 'react-router-dom';
 import { parseLink, targetToPath } from '../../shared/links';
 import type { Track } from '../../shared/types';
-import { localInfo, useLibrary } from '../store/library';
+import { localInfo, useLibrary, type CollectionInfo } from '../store/library';
 import { deleteLocalPlaylist } from './menus';
-import { toast, useUi } from '../store/ui';
+import { toast, useUi, type LinkedEdit } from '../store/ui';
 import { useSpectrumState } from '../player/useSpectrum';
 import { CollectionArt } from './CollectionArt';
 import { IconButton } from './IconButton';
@@ -201,6 +201,88 @@ function ConfirmDelete({ playlistId, afterDelete, onDone }: { playlistId: string
   );
 }
 
+/** 링크로 가져온 재생목록 → 내 재생목록 복사 (하려던 수정이 있으면 복사본에 바로 적용) */
+function CopyLinked({
+  collection,
+  getTracks,
+  edit,
+  onDone,
+}: {
+  collection: CollectionInfo;
+  getTracks: () => Promise<Track[]>;
+  edit?: LinkedEdit;
+  onDone: () => void;
+}) {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const okRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => okRef.current?.focus(), []);
+  const isAlbum = collection.kind === 'album';
+
+  const copy = async () => {
+    setBusy(true);
+    let tracks: Track[];
+    try {
+      tracks = await getTracks();
+    } catch (err) {
+      setBusy(false);
+      toast(`곡 목록을 불러오지 못했습니다. ${(err as Error).message}`);
+      return;
+    }
+    const lib = useLibrary.getState();
+    const id = lib.createPlaylist(collection.title, tracks);
+    // 하려던 수정을 복사본에 적용
+    if (edit?.type === 'remove') lib.removeFromPlaylist(id, edit.videoId);
+    if (edit?.type === 'move') {
+      const list = useLibrary.getState().playlists.find((p) => p.id === id)?.tracks ?? [];
+      const from = list.findIndex((t) => t.videoId === edit.videoId);
+      const to = list.findIndex((t) => t.videoId === edit.targetVideoId);
+      if (from >= 0 && to >= 0) lib.movePlaylistTrack(id, from, to);
+    }
+    onDone();
+    navigate(`/playlist?list=${encodeURIComponent(id)}`);
+    const done =
+      edit?.type === 'remove' ? ` '${edit.title}'을(를) 뺐어요.` : edit?.type === 'move' ? ` '${edit.title}'의 순서를 바꿨어요.` : '';
+    toast(`'${collection.title}'을(를) 내 재생목록으로 복사했어요.${done}`);
+    if (edit?.type === 'rename') useUi.getState().setDialog({ type: 'rename', playlistId: id });
+  };
+
+  const what = isAlbum ? '앨범' : '재생목록';
+  const editText =
+    edit?.type === 'remove'
+      ? `복사본에서는 '${edit.title}'을(를) 바로 빼 드릴게요.`
+      : edit?.type === 'move'
+        ? `복사본에서는 '${edit.title}'의 순서를 바로 바꿔 드릴게요.`
+        : edit?.type === 'rename'
+          ? '복사한 뒤 바로 이름을 바꿀 수 있어요.'
+          : '';
+  return (
+    <div className="confirm">
+      <div className="confirm__target">
+        <CollectionArt info={collection} size={56} className="confirm__art" />
+        <div className="confirm__text">
+          <div className="confirm__title">{collection.title}</div>
+          <div className="confirm__sub">{collection.subtitle ?? `링크로 가져온 ${what}`}</div>
+        </div>
+      </div>
+      <p className="modal__desc">
+        {edit ? `링크로 가져온 ${what}은 원본을 그대로 보여주기 때문에 이곳에서 수정할 수 없어요. ` : ''}
+        내 재생목록으로 복사하면 곡 추가·삭제, 순서 변경, 이름 바꾸기를 자유롭게 할 수 있어요. {editText}
+        <br />
+        <span className="modal__note">복사본에는 이후 원본의 변경 사항이 반영되지 않아요.</span>
+      </p>
+      <div className="confirm__actions">
+        <button type="button" className="btn btn--outline" onClick={onDone} disabled={busy}>
+          취소
+        </button>
+        <button ref={okRef} type="button" className="btn btn--primary" onClick={copy} disabled={busy}>
+          {busy ? '복사하는 중…' : edit ? '복사해서 수정하기' : '복사하기'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RenameForm({ playlistId, onDone }: { playlistId: string; onDone: () => void }) {
   const current = useLibrary((s) => s.playlists.find((p) => p.id === playlistId));
   const [title, setTitle] = useState(current?.title ?? '');
@@ -341,6 +423,12 @@ export function Dialogs() {
       return (
         <Modal title="재생목록에 저장" onClose={close}>
           <SaveToPlaylist tracks={dialog.tracks} suggestedTitle={dialog.suggestedTitle} onDone={close} />
+        </Modal>
+      );
+    case 'copyLinked':
+      return (
+        <Modal title={dialog.edit ? '링크로 가져온 재생목록은 수정할 수 없어요' : '내 재생목록으로 복사'} onClose={close}>
+          <CopyLinked collection={dialog.collection} getTracks={dialog.getTracks} edit={dialog.edit} onDone={close} />
         </Modal>
       );
     case 'rename':

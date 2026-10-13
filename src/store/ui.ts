@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { OriginalSong, Track } from '../../shared/types';
+import type { CollectionInfo } from './library';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -43,8 +44,19 @@ export interface LyricsOverride {
   original?: OriginalSong;
 }
 
+/** 링크로 가져온 재생목록에 하려던 수정 (복사본에 그대로 적용한다) */
+export type LinkedEdit =
+  | { type: 'remove'; videoId: string; title: string }
+  | { type: 'move'; videoId: string; targetVideoId: string; title: string }
+  | { type: 'rename' };
+
 export type Dialog =
   | { type: 'addLink' }
+  /**
+   * 링크로 가져온 재생목록을 내 재생목록으로 복사.
+   * edit가 있으면 '링크로 가져온 재생목록은 수정할 수 없어요' 안내와 함께 띄우고, 복사본에 그 수정을 바로 적용한다
+   */
+  | { type: 'copyLinked'; collection: CollectionInfo; getTracks: () => Promise<Track[]>; edit?: LinkedEdit }
   | { type: 'settings' }
   /** 곡들을 내 재생목록에 저장 (기존 재생목록 선택 또는 새로 만들기) */
   | { type: 'saveTo'; tracks: Track[]; suggestedTitle?: string }

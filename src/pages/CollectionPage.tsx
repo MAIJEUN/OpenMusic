@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { MdMoreVert, MdPause, MdPlayArrow, MdShuffle } from 'react-icons/md';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { MdContentCopy, MdMoreVert, MdPause, MdPlayArrow, MdShuffle } from 'react-icons/md';
 import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import type { CollectionDetail, Track } from '../../shared/types';
 import { isMixList } from '../../shared/links';
 import { IconButton } from '../components/IconButton';
-import { collectionMenuItems, openMenuFromEvent } from '../components/menus';
+import { askCopyLinked, collectionMenuItems, openMenuFromEvent } from '../components/menus';
 import { ErrorView, Loading } from '../components/PageState';
 import { Thumb } from '../components/Thumb';
 import { TrackList } from '../components/TrackRow';
@@ -15,7 +15,7 @@ import { LIKED_ID, isLocalId, useLibrary, type CollectionInfo } from '../store/l
 import { LikedPage, LocalPlaylistPage } from './MyPlaylistPage';
 import { player, usePlayer } from '../store/player';
 import { applyLatest } from '../player/usePlaylistSync';
-import { toast } from '../store/ui';
+import { toast, type LinkedEdit } from '../store/ui';
 
 export function PlaylistRoute() {
   const [params] = useSearchParams();
@@ -188,6 +188,17 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, registra
   };
 
   const menu = (e: MouseEvent) => openMenuFromEvent(e, collectionMenuItems(collection, getAllTracks));
+  // 링크로 가져온 목록은 수정할 수 없어서, 수정하려 하면 복사 안내 창을 띄운다 (복사본에 그 수정을 바로 적용)
+  // (곡 줄이 매번 다시 그려지지 않도록 같은 함수를 유지)
+  const latest = useRef({ collection, getAllTracks });
+  latest.current = { collection, getAllTracks };
+  const askEditStable = useCallback((edit: LinkedEdit) => askCopyLinked(latest.current.collection, latest.current.getAllTracks, edit), []);
+  const askEdit = registrable ? askEditStable : undefined;
+  // 끌어서 순서 바꾸기도 같은 안내로 (곡이 많거나 같은 곡이 두 번 있으면 끌기 없음)
+  const draggable = !!askEdit && complete && tracks.length > 1 && tracks.length <= 300 && new Set(tracks.map((t) => t.videoId)).size === tracks.length;
+  const onMove = draggable
+    ? (from: number, to: number) => askEdit({ type: 'move', videoId: tracks[from].videoId, targetVideoId: tracks[to].videoId, title: tracks[from].title })
+    : undefined;
 
   const total = formatTotal(tracks);
   const secondLine =
@@ -217,6 +228,11 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, registra
             <IconButton label="셔플" className="icon-btn--filled" onClick={() => playAll(true)} disabled={!tracks.length}>
               <MdShuffle />
             </IconButton>
+            {registrable && (
+              <IconButton label="내 재생목록으로 복사" className="icon-btn--filled" onClick={() => askCopyLinked(collection, getAllTracks)} disabled={!tracks.length}>
+                <MdContentCopy />
+              </IconButton>
+            )}
             <button type="button" className="play-big" aria-label={playingHere ? '일시중지' : '재생'} onClick={() => playAll(false)} disabled={!tracks.length}>
               {playingHere ? <MdPause /> : <MdPlayArrow />}
             </button>
@@ -232,7 +248,7 @@ function CollectionView({ detail, tracks, complete, getAllTracks, path, registra
 
         <div className="collection__body">
           {tracks.length ? (
-            <TrackList tracks={tracks} numbered={isAlbum} showAlbum={!isAlbum} onPlayIndex={playIndex} />
+            <TrackList tracks={tracks} numbered={isAlbum} showAlbum={!isAlbum} onPlayIndex={playIndex} onLinkedEdit={askEdit} onMove={onMove} />
           ) : (
             <div className="panel-empty">이 재생목록에 재생 가능한 곡이 없습니다</div>
           )}

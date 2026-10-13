@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 import {
+  MdContentCopy,
   MdDeleteOutline,
   MdDriveFileRenameOutline,
   MdFavorite,
@@ -14,7 +15,7 @@ import {
 import type { Track } from '../../shared/types';
 import { collectionPath, isLocalId, useLibrary, type CollectionInfo } from '../store/library';
 import { player } from '../store/player';
-import { toast, useUi, type MenuState } from '../store/ui';
+import { toast, useUi, type LinkedEdit, type MenuState } from '../store/ui';
 
 export function openMenuFromEvent(e: MouseEvent, items: MenuState['items']) {
   e.preventDefault();
@@ -41,11 +42,17 @@ export function toggleLikeWithToast(track: Track) {
 export const saveTracksTo = (tracks: Track[], suggestedTitle?: string) =>
   useUi.getState().setDialog({ type: 'saveTo', tracks, suggestedTitle });
 
+/** 링크로 가져온 재생목록 복사 창 (edit: 하려던 수정 — 수정할 수 없다는 안내와 함께 띄우고 복사본에 적용) */
+export const askCopyLinked = (collection: CollectionInfo, getTracks: () => Promise<Track[]>, edit?: LinkedEdit) =>
+  useUi.getState().setDialog({ type: 'copyLinked', collection, getTracks, edit });
+
 interface TrackMenuOptions {
   /** 지금 재생목록(대기열) 항목이면 그 uid */
   queueUid?: string;
   /** 내 재생목록 화면에서 연 메뉴면 그 재생목록 ID (삭제 메뉴 표시) */
   playlistId?: string;
+  /** 링크로 가져온 재생목록 화면이면: 수정하려 할 때 (복사 안내 창을 띄운다) */
+  onLinkedEdit?: (edit: LinkedEdit) => void;
 }
 
 /** 곡 메뉴 */
@@ -64,6 +71,14 @@ export function trackMenuItems(track: Track, opts: TrackMenuOptions = {}): MenuS
   if (opts.queueUid) {
     const uid = opts.queueUid;
     items.push('divider', { label: '현재 재생목록에서 삭제', icon: <MdRemoveCircleOutline />, onSelect: () => player().removeFromQueue(uid) });
+  }
+  if (opts.onLinkedEdit) {
+    const ask = opts.onLinkedEdit;
+    items.push('divider', {
+      label: '이 재생목록에서 삭제',
+      icon: <MdDeleteOutline />,
+      onSelect: () => ask({ type: 'remove', videoId: track.videoId, title: track.title }),
+    });
   }
   if (opts.playlistId && isLocalId(opts.playlistId)) {
     const id = opts.playlistId;
@@ -151,8 +166,18 @@ export function collectionMenuItems(
     'divider',
     {
       label: '내 재생목록으로 복사',
+      icon: <MdContentCopy />,
+      onSelect: () => askCopyLinked(collection, getTracks),
+    },
+    {
+      label: '다른 재생목록에 저장',
       icon: <MdPlaylistAdd />,
       onSelect: withTracks((t) => saveTracksTo(t, collection.title)),
+    },
+    {
+      label: '이름 바꾸기',
+      icon: <MdDriveFileRenameOutline />,
+      onSelect: () => askCopyLinked(collection, getTracks, { type: 'rename' }),
     },
     saved
       ? {

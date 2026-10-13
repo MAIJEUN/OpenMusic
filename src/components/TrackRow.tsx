@@ -1,6 +1,7 @@
 import { Fragment, memo, type MouseEvent } from 'react';
 import { MdExplicit, MdFavorite, MdFavoriteBorder, MdMoreVert, MdPause, MdPlayArrow } from 'react-icons/md';
 import type { Track } from '../../shared/types';
+import type { LinkedEdit } from '../store/ui';
 import { albumOrExtra, artistNames, formatTime } from '../lib/format';
 import { useLibrary } from '../store/library';
 import { player, usePlayer } from '../store/player';
@@ -18,9 +19,11 @@ interface Props {
   onPlay: () => void;
   /** 내 재생목록 화면이면 그 ID (메뉴에 '이 재생목록에서 삭제' 표시) */
   playlistId?: string;
+  /** 링크로 가져온 재생목록 화면이면: 수정하려 할 때 (복사 안내) */
+  onLinkedEdit?: (edit: LinkedEdit) => void;
 }
 
-export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true, onPlay, playlistId }: Props) {
+export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true, onPlay, playlistId, onLinkedEdit }: Props) {
   const isCurrent = usePlayer((s) => {
     const cur = s.queue[s.index]?.track;
     return !!cur && (cur.videoId === track.videoId || cur.sourceId === track.videoId);
@@ -34,7 +37,7 @@ export const TrackRow = memo(function TrackRow({ track, number, showAlbum = true
     else onPlay();
   };
 
-  const openMenu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(track, { playlistId }));
+  const openMenu = (e: MouseEvent) => openMenuFromEvent(e, trackMenuItems(track, { playlistId, onLinkedEdit }));
   const artists = artistNames(track.artists);
   const albumText = albumOrExtra(track);
 
@@ -123,9 +126,10 @@ interface ListProps {
   playlistId?: string;
   /** 주면 끌어서 순서를 바꿀 수 있다 (곡은 videoId로 구분되어야 함) */
   onMove?: (from: number, to: number) => void;
+  onLinkedEdit?: (edit: LinkedEdit) => void;
 }
 
-export function TrackList({ tracks, numbered, showAlbum, onPlayIndex, playlistId, onMove }: ListProps) {
+export function TrackList({ tracks, numbered, showAlbum, onPlayIndex, playlistId, onMove, onLinkedEdit }: ListProps) {
   const row = (t: Track, i: number) => (
     <TrackRow
       track={t}
@@ -133,6 +137,7 @@ export function TrackList({ tracks, numbered, showAlbum, onPlayIndex, playlistId
       showAlbum={showAlbum}
       onPlay={() => onPlayIndex(i)}
       playlistId={playlistId}
+      onLinkedEdit={onLinkedEdit}
     />
   );
   if (onMove) {
