@@ -7,7 +7,7 @@ import { localInfo, useLibrary, type CollectionInfo } from '../store/library';
 import { deleteLocalPlaylist } from './menus';
 import { toast, useUi, type LinkedEdit } from '../store/ui';
 import { useSpectrumState } from '../player/useSpectrum';
-import { gainDb, loudnessOf, normalizeMode, onLoudness, type NormalizeMode } from '../player/useLoudness';
+import { gainDb, headroomDb, loudnessOf, normalizeMode, onLoudness, type NormalizeMode } from '../player/useLoudness';
 import { usePlayer } from '../store/player';
 import { CollectionArt } from './CollectionArt';
 import { IconButton } from './IconButton';
@@ -338,6 +338,7 @@ const NORMALIZE_OPTIONS: { id: NormalizeMode; label: string }[] = [
 /** 지금 곡의 볼륨 균형 조정 상태 */
 function NormalizeStatus({ mode }: { mode: NormalizeMode }) {
   const playingId = usePlayer((s) => s.playingId);
+  const volume = usePlayer((s) => (s.muted ? 0 : s.volume));
   const [, force] = useState(0);
   useEffect(() => {
     const off = onLoudness(() => force((n) => n + 1));
@@ -345,11 +346,21 @@ function NormalizeStatus({ mode }: { mode: NormalizeMode }) {
   }, []);
   if (!playingId || mode === 'off') return null;
   const l = loudnessOf(playingId);
-  const db = gainDb(playingId, l, mode);
-  const source = l === undefined ? '음량 확인 중' : l ? `음량 ${l.loudness.toFixed(1)} LUFS` : '음량 정보 없음 (평균 곡 기준)';
+  const want = gainDb(playingId, l, mode);
+  const room = headroomDb(volume);
+  const db = want > 0 ? Math.min(want, room) : want;
+  const source = l === undefined ? '음량 확인 중' : l ? `음량 ${l.loudness.toFixed(1)} LUFS` : '음량 정보 없음 (보통 곡으로 봄)';
+  const result =
+    db < -0.05 ? `${Math.abs(db).toFixed(1)}dB 줄임` : db > 0.05 ? `${db.toFixed(1)}dB 키움` : want > 0 ? '그대로' : '그대로 (보통 음량)';
   return (
     <div className="settings__status">
-      지금 곡: {source} → {db < -0.05 ? `${db.toFixed(1)}dB 줄임` : '그대로'}
+      지금 곡: {source} → {result}
+      {want > room + 0.05 && (
+        <div>
+          조용한 곡이라 {want.toFixed(1)}dB 키우고 싶지만 볼륨이 {Math.round(volume)}이라 {room > 0.05 ? `${room.toFixed(1)}dB까지만` : '더'} 키울 수
+          {room > 0.05 ? '있어요' : '없어요'}. 볼륨을 조금 낮춰 두면 조용한 곡도 맞춰서 키워 드려요.
+        </div>
+      )}
     </div>
   );
 }
@@ -365,7 +376,7 @@ function PlaybackSettingsForm() {
         <div className="settings__text">
           <div className="settings__title">볼륨 균형 조정</div>
           <div className="settings__desc">
-            곡마다 다른 음량을 맞춰서 볼륨을 계속 만지지 않아도 되게 합니다. 볼륨을 키울 수는 없어서 큰 곡을 조용한 곡에 맞춰 줄이며, &lsquo;강하게&rsquo;는 더 고르게 맞추는 대신 전체 소리가 조금 작아집니다.
+            보통 음량의 곡은 그대로 두고, 유난히 조용한 곡은 키우고 유난히 큰 곡(주로 SoundCloud)은 줄여서 맞춥니다. 웹 플레이어는 100보다 크게 틀 수 없어서, 조용한 곡은 볼륨을 100보다 낮게 둔 만큼만 키울 수 있어요. &lsquo;강하게&rsquo;는 조용한 곡을 더 많이(최대 12dB) 키웁니다.
           </div>
         </div>
       </div>
