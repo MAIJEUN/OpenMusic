@@ -37,6 +37,8 @@ export interface PlaybackSettings {
   skipSilence: boolean;
   /** 이 시간(초) 이상 무음이 이어지면 다음 곡으로 */
   silenceSeconds: number;
+  /** 볼륨 균형 조정 (곡마다 다른 음량을 맞춘다). 예전 설정에는 없어서 비어 있으면 'normal' */
+  normalize?: 'off' | 'normal' | 'strong';
 }
 
 export interface LyricsOverride {
@@ -103,7 +105,7 @@ export const useUi = create<UiState>()(
   persist(
     (set) => ({
       sidebarCollapsed: false,
-      playback: { crossfade: 5, skipNonMusic: true, skipSilence: true, silenceSeconds: 3 },
+      playback: { crossfade: 5, skipNonMusic: true, skipSilence: true, silenceSeconds: 3, normalize: 'normal' },
       setPlayback: (patch) => set((s) => ({ playback: { ...s.playback, ...patch } })),
       lyricsOffsets: {},
       lyricsOverrides: {},

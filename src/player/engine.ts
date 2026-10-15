@@ -6,6 +6,8 @@
  * - FakeEngine: 목 데이터 모드에서 타이머로 재생을 흉내낸다
  */
 
+import { onTrackGainChange, trackGain } from './trackGain';
+
 export type EngineState = 'unstarted' | 'playing' | 'paused' | 'buffering' | 'ended' | 'cued';
 
 export interface EngineEvents {
@@ -80,8 +82,12 @@ export class YouTubeEngine implements Engine {
   private pending: { videoId: string; opts: LoadOptions } | null = null;
   private volume = 100;
   private muted = false;
+  /** 지금 틀고 있는 영상 (곡별 볼륨 균형 배율) */
+  private videoId: string | null = null;
 
-  constructor(private events: EngineEvents = noopEvents) {}
+  constructor(private events: EngineEvents = noopEvents) {
+    onTrackGainChange(() => this.applyVolume());
+  }
 
   mount(el: HTMLElement) {
     if (this.player) return;
@@ -127,7 +133,7 @@ export class YouTubeEngine implements Engine {
 
   private applyVolume() {
     if (!this.player || !this.ready) return;
-    this.player.setVolume(this.volume);
+    this.player.setVolume(Math.round(this.volume * trackGain(this.videoId)));
     if (this.muted) this.player.mute();
     else this.player.unMute();
   }
@@ -149,6 +155,8 @@ export class YouTubeEngine implements Engine {
       this.pending = { videoId, opts };
       return;
     }
+    this.videoId = videoId;
+    this.applyVolume();
     const args = { videoId, startSeconds: Math.max(0, Math.floor(opts.start ?? 0)) };
     if (opts.autoplay) this.player.loadVideoById(args);
     else this.player.cueVideoById(args);
@@ -258,8 +266,11 @@ export class SoundCloudEngine implements Engine {
   private startAt = 0;
   /** 로드마다 늘어나는 번호 (이전 곡의 늦은 이벤트 무시) */
   private gen = 0;
+  private videoId: string | null = null;
 
-  constructor(private events: EngineEvents = noopEvents) {}
+  constructor(private events: EngineEvents = noopEvents) {
+    onTrackGainChange(() => this.applyVolume());
+  }
 
   mount(el: HTMLElement) {
     this.el = el;
@@ -302,7 +313,7 @@ export class SoundCloudEngine implements Engine {
   }
 
   private applyVolume() {
-    this.widget?.setVolume(this.muted ? 0 : this.volume);
+    this.widget?.setVolume(this.muted ? 0 : Math.round(this.volume * trackGain(this.videoId)));
   }
 
   /** 불러온 곡이 준비되면 */
@@ -317,6 +328,7 @@ export class SoundCloudEngine implements Engine {
 
   load(videoId: string, opts: LoadOptions) {
     const gen = ++this.gen;
+    this.videoId = videoId;
     this.time = opts.start ?? 0;
     this.timeAt = performance.now();
     this.startAt = opts.start ?? 0;
@@ -473,7 +485,9 @@ export class FakeEngine implements Engine {
   private timer: ReturnType<typeof setInterval> | null = null;
   private el: HTMLElement | null = null;
 
-  constructor(private events: EngineEvents = noopEvents) {}
+  constructor(private events: EngineEvents = noopEvents) {
+    onTrackGainChange(() => this.showVolume());
+  }
 
   mount(el: HTMLElement) {
     this.el = el;
@@ -481,8 +495,16 @@ export class FakeEngine implements Engine {
       '<div style="width:100%;height:100%;display:grid;place-items:center;background:#111;color:#777;font:14px sans-serif">목 데이터 모드 · 동영상 미리보기 없음</div>';
   }
 
-  load(_videoId: string, opts: LoadOptions) {
-    void this.el;
+  private volume = 100;
+  private videoId: string | null = null;
+  /** 실제 소리는 없지만 확인용으로 적용된 볼륨을 화면 요소에 남긴다 */
+  private showVolume() {
+    if (this.el) this.el.dataset.volume = String(Math.round(this.volume * trackGain(this.videoId)));
+  }
+
+  load(videoId: string, opts: LoadOptions) {
+    this.videoId = videoId;
+    this.showVolume();
     this.time = opts.start ?? 0;
     this.duration = opts.durationHint ?? 200;
     this.stopTimer();
@@ -524,7 +546,10 @@ export class FakeEngine implements Engine {
     if (!this.playing) this.time = t;
     else setTimeout(() => (this.time = t), 350);
   }
-  setVolume() {}
+  setVolume(volume: number) {
+    this.volume = volume;
+    this.showVolume();
+  }
   setMuted() {}
   getTime() {
     return this.time;

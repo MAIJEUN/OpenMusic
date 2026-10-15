@@ -57,6 +57,24 @@ export interface ContinuationPage {
 
 export type SearchFilter = 'song' | 'video' | 'soundcloud';
 
+/** 곡 음량을 찾기 위한 정보 (볼륨 균형 조정) */
+export interface LoudnessQuery {
+  title: string;
+  artist: string;
+  /** 초 */
+  duration?: number;
+  /** 뮤직비디오면 길이가 음원과 달라도 된다 */
+  isVideo?: boolean;
+}
+
+/** 곡 전체의 평균 음량 (대략 LUFS, 클수록 큰 소리) */
+export interface Loudness {
+  loudness: number;
+  source: 'deezer' | 'mock';
+  /** 음량을 가져온 곡 */
+  match?: string;
+}
+
 /** 다른 서비스 곡과 같은 YouTube Music 곡을 찾기 위한 정보 */
 export interface MatchQuery {
   title: string;
