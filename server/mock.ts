@@ -199,6 +199,13 @@ export const mockProvider: Provider = {
     return { query, filter, tracks };
   },
 
+  async loudness(q) {
+    await delay();
+    // 제목에 따라 -6 ~ -20 LUFS 사이의 음량 (조용한 곡·큰 곡 섞임)
+    const n = [...q.title].reduce((a, c) => a + c.charCodeAt(0), 0);
+    return { loudness: -6 - (n % 15), source: 'mock', match: q.title };
+  },
+
   async match(q) {
     await delay();
     // 'nomatch'가 들어간 곡은 못 찾은 것으로

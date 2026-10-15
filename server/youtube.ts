@@ -12,6 +12,7 @@ import { bestThumb, parseDuration, parseRuns, runsOf, textOf, trackFromListItem,
 import type { Provider } from './provider.js';
 import { scCollection, scSearch } from './soundcloud.js';
 import { spotifyCollection } from './spotify.js';
+import { deezerLoudness } from './deezer.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any;
@@ -361,6 +362,7 @@ const VARIANT_TITLE = /(cover|커버|カバー|piano|피아노|instrumental|inst
 
 export const youtubeProvider: Provider = {
   match,
+  loudness: deezerLoudness,
   playlist: getPlaylist,
   continuation: getContinuation,
   album: getAlbum,

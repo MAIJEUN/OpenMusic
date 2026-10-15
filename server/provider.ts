@@ -1,5 +1,5 @@
 import type { LyricsQuery } from './lyrics.js';
-import type { CollectionDetail, Counterpart, ContinuationPage, Lyrics, MatchQuery, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
+import type { CollectionDetail, Counterpart, ContinuationPage, Loudness, LoudnessQuery, Lyrics, MatchQuery, SearchFilter, SearchResult, Track, UpNext } from '../shared/types.js';
 
 /** 메타데이터 공급자 (실제 YouTube Music 또는 개발용 목 데이터) */
 export interface Provider {
@@ -14,4 +14,6 @@ export interface Provider {
   search(query: string, filter: SearchFilter): Promise<SearchResult>;
   /** 다른 서비스 곡(Spotify)과 같은 YouTube Music 곡 */
   match(q: MatchQuery): Promise<Track | null>;
+  /** 곡 음량 (볼륨 균형 조정) */
+  loudness(q: LoudnessQuery): Promise<Loudness | null>;
 }

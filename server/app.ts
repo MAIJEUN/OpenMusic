@@ -118,6 +118,15 @@ export function createApp(provider: Provider, config: ServerConfig) {
     return c.json(await cached(`match:${title}:${artist}:${duration ?? ''}`, 24 * 60 * MIN, () => provider.match({ title, artist, duration })));
   });
 
+  app.get('/loudness', ttl(86400), async (c) => {
+    const title = need(c.req.query('title'), 'title').slice(0, 200);
+    const artist = (c.req.query('artist') ?? '').trim().slice(0, 200);
+    const duration = Number(c.req.query('duration')) || undefined;
+    const isVideo = c.req.query('video') === '1';
+    const key = `loud:${title}:${artist}:${duration ?? ''}:${isVideo}`;
+    return c.json(await cached(key, 24 * 60 * MIN, () => provider.loudness({ title, artist, duration, isVideo }).catch(() => null)));
+  });
+
   app.get('/counterpart/:id', ttl(86400), async (c) => {
     const id = need(c.req.param('id'), 'id');
     return c.json(await cached(`counterpart:${id}`, 24 * 60 * MIN, () => provider.counterpart(id)));

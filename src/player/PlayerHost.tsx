@@ -8,6 +8,7 @@ import { DualEngine, FakeEngine, SwitchEngine, YouTubeEngine, type Engine, type 
 import { useSmartTransitions } from './useSmartTransitions';
 import { useAudioVersion } from './useAudioVersion';
 import { usePlaylistSync } from './usePlaylistSync';
+import { useLoudness } from './useLoudness';
 import { pausedInBackground, useBackgroundPlayback } from './useBackgroundPlayback';
 import { anchorPause, anchorPlay } from './mediaAnchor';
 
@@ -98,6 +99,7 @@ export function PlayerHost() {
   useSmartTransitions();
   useAudioVersion();
   usePlaylistSync();
+  useLoudness();
   useBackgroundPlayback();
 
   return <div ref={hostRef} className="player-host" aria-hidden />;
