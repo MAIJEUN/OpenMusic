@@ -133,7 +133,7 @@ export class YouTubeEngine implements Engine {
 
   private applyVolume() {
     if (!this.player || !this.ready) return;
-    this.player.setVolume(Math.round(this.volume * trackGain(this.videoId)));
+    this.player.setVolume(Math.min(100, Math.round(this.volume * trackGain(this.videoId))));
     if (this.muted) this.player.mute();
     else this.player.unMute();
   }
@@ -313,7 +313,7 @@ export class SoundCloudEngine implements Engine {
   }
 
   private applyVolume() {
-    this.widget?.setVolume(this.muted ? 0 : Math.round(this.volume * trackGain(this.videoId)));
+    this.widget?.setVolume(this.muted ? 0 : Math.min(100, Math.round(this.volume * trackGain(this.videoId))));
   }
 
   /** 불러온 곡이 준비되면 */
@@ -499,7 +499,7 @@ export class FakeEngine implements Engine {
   private videoId: string | null = null;
   /** 실제 소리는 없지만 확인용으로 적용된 볼륨을 화면 요소에 남긴다 */
   private showVolume() {
-    if (this.el) this.el.dataset.volume = String(Math.round(this.volume * trackGain(this.videoId)));
+    if (this.el) this.el.dataset.volume = String(Math.min(100, Math.round(this.volume * trackGain(this.videoId))));
   }
 
   load(videoId: string, opts: LoadOptions) {
