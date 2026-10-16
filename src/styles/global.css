@@ -2704,6 +2704,19 @@ p {
   color: var(--text-2);
   margin-bottom: 16px;
 }
+.settings__status > div + div {
+  margin-top: 2px;
+}
+.settings__link {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .modal__note {
   display: inline-block;
   margin-top: 6px;

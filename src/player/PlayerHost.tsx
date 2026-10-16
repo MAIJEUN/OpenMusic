@@ -9,6 +9,7 @@ import { useSmartTransitions } from './useSmartTransitions';
 import { useAudioVersion } from './useAudioVersion';
 import { usePlaylistSync } from './usePlaylistSync';
 import { useLoudness } from './useLoudness';
+import { useLoudnessMeter } from './loudnessMeter';
 import { pausedInBackground, useBackgroundPlayback } from './useBackgroundPlayback';
 import { anchorPause, anchorPlay } from './mediaAnchor';
 
@@ -100,6 +101,7 @@ export function PlayerHost() {
   useAudioVersion();
   usePlaylistSync();
   useLoudness();
+  useLoudnessMeter();
   useBackgroundPlayback();
 
   return <div ref={hostRef} className="player-host" aria-hidden />;
