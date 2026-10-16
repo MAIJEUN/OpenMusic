@@ -20,6 +20,9 @@ class Spectrum {
   private frameListeners = new Set<FrameListener>();
   private raf = 0;
   private testGain: GainNode | null = null;
+  /** 음량 측정용 (K-weighting을 거친 왼쪽/오른쪽 채널) */
+  private meters: AnalyserNode[] = [];
+  private meterBuf = new Float32Array(0);
 
   /** 탭 공유로 받은 화면 영상 트랙 (동영상 색 추출용). 스펙트럼이 꺼져 있으면 null */
   get videoTrack(): MediaStreamTrack | null {
@@ -89,6 +92,51 @@ class Spectrum {
     return analyser;
   }
 
+  /**
+   * 음량 측정 경로: 사람 귀 감도에 맞춘 K-weighting(ITU-R BS.1770: 고음 강조 + 저음 차단) 뒤 채널별 분석기.
+   * 스펙트럼 표시와 따로 두어 표시용 설정에 영향받지 않게 한다.
+   */
+  private setupMeter(ctx: AudioContext, input: AudioNode) {
+    const shelf = ctx.createBiquadFilter();
+    shelf.type = 'highshelf';
+    shelf.frequency.value = 1681;
+    shelf.gain.value = 4;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 38;
+    hp.Q.value = 0.5;
+    const split = ctx.createChannelSplitter(2);
+    input.connect(shelf).connect(hp).connect(split);
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    mute.connect(ctx.destination);
+    this.meters = [0, 1].map((ch) => {
+      const a = ctx.createAnalyser();
+      // 약 0.35초(48kHz 기준) 구간 — 음량 표준의 400ms 구간과 비슷하게
+      a.fftSize = 16384;
+      split.connect(a, ch);
+      a.connect(mute);
+      return a;
+    });
+    this.meterBuf = new Float32Array(16384);
+  }
+
+  /**
+   * 최근 약 0.35초 소리의 에너지 (채널별 평균 제곱의 합 — 음량 표준의 채널 합산과 같은 방식).
+   * 측정할 수 없으면 null
+   */
+  readEnergy(): number | null {
+    if (this.state !== 'on' || this.meters.length !== 2) return null;
+    let sum = 0;
+    for (const a of this.meters) {
+      a.getFloatTimeDomainData(this.meterBuf);
+      let s = 0;
+      for (let i = 0; i < this.meterBuf.length; i++) s += this.meterBuf[i] * this.meterBuf[i];
+      sum += s / this.meterBuf.length;
+    }
+    return sum;
+  }
+
   /** 이 탭의 오디오를 캡처해서 분석을 시작한다 (사용자 클릭에서 호출해야 함) */
   async start(): Promise<void> {
     if (this.state !== 'off') return;
@@ -119,6 +167,7 @@ class Spectrum {
       const ctx = new AudioContext();
       const source = ctx.createMediaStreamSource(new MediaStream([audio]));
       source.connect(this.setupAnalyser(ctx)); // 분석만 하고 다시 재생하지 않는다 (소리는 원래대로 나옴)
+      this.setupMeter(ctx, source);
       this.ctx = ctx;
       this.stream = stream;
       this.setState('on');
@@ -139,6 +188,7 @@ class Spectrum {
     const gain = ctx.createGain();
     gain.gain.value = 0;
     gain.connect(analyser);
+    this.setupMeter(ctx, gain);
     // 저음 킥 + 화음 + 노이즈를 LFO로 흔들어 음악처럼 움직이게 한다
     const voices: [OscillatorType, number, number][] = [
       ['sine', 55, 1],
@@ -175,9 +225,9 @@ class Spectrum {
     this.setState('on');
   }
 
-  /** 목 데이터 모드에서 재생/일시정지에 맞춰 테스트 신호를 켜고 끈다 */
-  setTestSignalActive(active: boolean) {
-    if (this.testGain && this.ctx) this.testGain.gain.setTargetAtTime(active ? 1 : 0, this.ctx.currentTime, 0.05);
+  /** 목 데이터 모드에서 재생/일시정지에 맞춰 테스트 신호를 켜고 끈다 (level: 실제 플레이어 볼륨처럼 0~1) */
+  setTestSignalActive(active: boolean, level = 1) {
+    if (this.testGain && this.ctx) this.testGain.gain.setTargetAtTime(active ? level : 0, this.ctx.currentTime, 0.05);
   }
 
   stop() {
@@ -193,6 +243,7 @@ class Spectrum {
     this.ctx = null;
     this.analyser = null;
     this.testGain = null;
+    this.meters = [];
   }
 }
 

@@ -21,6 +21,7 @@ import { player, usePlayer } from '../store/player';
 import { api } from '../lib/api';
 import { spectrum } from '../player/spectrum';
 import { useSpectrumState } from '../player/useSpectrum';
+import { onTrackGainChange, trackGain } from '../player/trackGain';
 import { toast, useUi } from '../store/ui';
 import { useLibrary } from '../store/library';
 import { IconButton } from './IconButton';
@@ -191,10 +192,17 @@ function SpectrumButton() {
     api.config().then((c) => setMock(c.mock)).catch(() => {});
   }, []);
 
-  // 목 데이터 모드: 실제 소리가 없으므로 재생 상태에 맞춰 테스트 신호를 켜고 끈다
+  // 목 데이터 모드: 실제 소리가 없으므로 재생 상태에 맞춰 테스트 신호를 켜고 끈다 (실제 플레이어처럼 볼륨도 반영)
+  const level = usePlayer((s) => (s.muted ? 0 : s.volume));
+  const playingId = usePlayer((s) => s.playingId);
+  const [gainTick, setGainTick] = useState(0);
   useEffect(() => {
-    if (mock) spectrum.setTestSignalActive(status === 'playing');
-  }, [mock, status, state]);
+    const off = onTrackGainChange(() => setGainTick((n) => n + 1));
+    return () => void off();
+  }, []);
+  useEffect(() => {
+    if (mock) spectrum.setTestSignalActive(status === 'playing', Math.min(100, level * trackGain(playingId)) / 100);
+  }, [mock, status, state, level, playingId, gainTick]);
 
   if (!mock && !spectrum.supported) return null;
 
