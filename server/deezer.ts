@@ -52,7 +52,10 @@ export async function deezerLoudness(q: LoudnessQuery): Promise<Loudness | null>
   let scored = rate(await search(`${title} ${q.artist.split(',')[0]}`.trim(), 15), false);
   // 가수 칸이 올린 채널 이름인 뮤직비디오 등: 제목만으로 다시 찾는다 (제목에 가수 이름이 있어야 인정)
   if (!scored.length && q.artist) scored = rate(await search(title, 15), false);
-  if (!scored.length && !q.isVideo && q.duration && artistKeys.length) {
+  // 같은 가수·같은 길이로 찾는 건 제목이 한글·일본어 등이라 Deezer에 다른 언어 제목으로 올라가 있을 때만
+  // (영어 제목인데 못 찾았다면 다른 곡일 가능성이 커서, 같은 가수의 길이만 비슷한 다른 곡을 잡지 않게)
+  const nonLatinTitle = !/[a-z]/i.test(title);
+  if (!scored.length && nonLatinTitle && !q.isVideo && q.duration && artistKeys.length) {
     scored = rate(await search(q.artist.split(',')[0], 50), true);
   }
 
