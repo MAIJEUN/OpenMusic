@@ -21,10 +21,12 @@ if (clientId) {
   if (!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(clientId)) {
     console.log(`::warning::GOOGLE_CLIENT_ID 형식이 이상합니다 (…apps.googleusercontent.com 이어야 함): ${clientId}`);
   }
-  toml = toml.replace(/^\[vars\]\s*$/m, `[vars]\nGOOGLE_CLIENT_ID = "${clientId}"`);
-  console.log('Google 로그인: 사용');
+  // wrangler.toml에 이미 있으면 바꾸고, 없으면 [vars]에 넣는다
+  if (/^GOOGLE_CLIENT_ID\s*=.*$/m.test(toml)) toml = toml.replace(/^GOOGLE_CLIENT_ID\s*=.*$/m, `GOOGLE_CLIENT_ID = "${clientId}"`);
+  else toml = toml.replace(/^\[vars\]\s*$/m, `[vars]\nGOOGLE_CLIENT_ID = "${clientId}"`);
+  console.log('Google 로그인: 저장소 Variables의 클라이언트 ID 사용');
 } else {
-  console.log('Google 로그인: 꺼짐 (저장소 Variables에 GOOGLE_CLIENT_ID가 없음)');
+  console.log(/^GOOGLE_CLIENT_ID\s*=\s*"[^"]+"/m.test(toml) ? 'Google 로그인: wrangler.toml의 클라이언트 ID 사용' : 'Google 로그인: 꺼짐 (GOOGLE_CLIENT_ID 없음)');
 }
 
 if (process.env.SKIP_KV) {
