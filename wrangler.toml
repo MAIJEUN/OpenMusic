@@ -19,3 +19,5 @@ run_worker_first = ["/api/*"]
 [vars]
 YT_LANG = "ko"
 YT_LOCATION = "KR"
+# Google 로그인 OAuth 클라이언트 ID (공개 값). 저장소 Variables의 GOOGLE_CLIENT_ID가 있으면 그걸 쓴다
+GOOGLE_CLIENT_ID = "813934770937-f444fl1gi8l1ua74bkpqq761iov91vuk.apps.googleusercontent.com"
