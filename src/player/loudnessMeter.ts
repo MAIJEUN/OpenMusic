@@ -46,6 +46,34 @@ let measured: Record<string, Measured> = (() => {
 })();
 const listeners = new Set<() => void>();
 
+/** '측정 기록 지우기'를 한 시각 — 동기화할 때 그 전에 잰 값이 다른 기기에서 되살아나지 않게 */
+const CLEARED_KEY = 'om-loudness-cleared';
+let clearedAt = (() => {
+  try {
+    return Number(localStorage.getItem(CLEARED_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+})();
+export const measuredClearedAt = () => clearedAt;
+
+const persist = () => {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(measured));
+    localStorage.setItem(CLEARED_KEY, String(clearedAt));
+  } catch {
+    /* 저장 공간이 없으면 이번 세션에서만 쓴다 */
+  }
+};
+
+/** 동기화로 받은 측정값으로 바꾼다 */
+export function replaceMeasured(next: Record<string, Measured>, cleared: number) {
+  measured = next;
+  clearedAt = cleared;
+  persist();
+  listeners.forEach((fn) => fn());
+}
+
 export const measuredOf = (videoId: string): Measured | undefined => measured[videoId];
 export const allMeasured = () => measured;
 export const onMeasured = (fn: () => void) => (listeners.add(fn), () => listeners.delete(fn));
@@ -57,21 +85,14 @@ function save(videoId: string, m: Measured) {
   if (keys.length > MAX_ENTRIES) {
     for (const k of keys.sort((a, b) => measured[a].at - measured[b].at).slice(0, keys.length - MAX_ENTRIES)) delete measured[k];
   }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(measured));
-  } catch {
-    /* 저장 공간이 없으면 이번 세션에서만 쓴다 */
-  }
+  persist();
   listeners.forEach((fn) => fn());
 }
 
 export function clearMeasured() {
   measured = {};
-  try {
-    localStorage.removeItem(KEY);
-  } catch {
-    /* noop */
-  }
+  clearedAt = Date.now();
+  persist();
   listeners.forEach((fn) => fn());
 }
 

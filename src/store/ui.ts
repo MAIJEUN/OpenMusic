@@ -73,7 +73,13 @@ interface UiState {
   sidebarCollapsed: boolean;
   /** 재생 설정 */
   playback: PlaybackSettings;
+  /** 재생 설정을 마지막으로 바꾼 시각 (로그인 동기화에서 더 나중 것을 쓰기 위해) */
+  playbackAt: number;
   setPlayback: (patch: Partial<PlaybackSettings>) => void;
+  /** 곡별 가사 설정(싱크·원곡·숨기기)을 마지막으로 바꾼 시각 */
+  lyricsAt: Record<string, number>;
+  /** 동기화로 받은 설정을 반영한다 */
+  applySynced: (p: Pick<UiState, 'playback' | 'playbackAt' | 'lyricsOffsets' | 'lyricsOverrides' | 'lyricsAt'>) => void;
   /** 곡(영상 ID)별로 직접 맞춘 가사 싱크(초) */
   lyricsOffsets: Record<string, number>;
   /** 영상별 가사 설정: 숨기기, 직접 고른 원곡 */
@@ -102,14 +108,27 @@ interface UiState {
 
 let toastId = 0;
 
+/** 곡별 가사 설정을 바꾼 시각 기록 (오래된 것부터 지워 너무 커지지 않게) */
+function touch(at: Record<string, number>, videoId: string): Record<string, number> {
+  const next = { ...at };
+  delete next[videoId];
+  next[videoId] = Date.now();
+  const keys = Object.keys(next);
+  for (const k of keys.slice(0, Math.max(0, keys.length - 1500))) delete next[k];
+  return next;
+}
+
 export const useUi = create<UiState>()(
   persist(
     (set) => ({
       sidebarCollapsed: false,
       playback: { crossfade: 5, skipNonMusic: true, skipSilence: true, silenceSeconds: 3, normalize: 'normal' },
-      setPlayback: (patch) => set((s) => ({ playback: { ...s.playback, ...patch } })),
+      playbackAt: 0,
+      setPlayback: (patch) => set((s) => ({ playback: { ...s.playback, ...patch }, playbackAt: Date.now() })),
       lyricsOffsets: {},
       lyricsOverrides: {},
+      lyricsAt: {},
+      applySynced: (p) => set(p),
       setLyricsOverride: (videoId, o) =>
         set((s) => {
           const next = { ...s.lyricsOverrides };
@@ -117,7 +136,7 @@ export const useUi = create<UiState>()(
           if (o) next[videoId] = o;
           const keys = Object.keys(next);
           for (const k of keys.slice(0, Math.max(0, keys.length - 500))) delete next[k];
-          return { lyricsOverrides: next };
+          return { lyricsOverrides: next, lyricsAt: touch(s.lyricsAt, videoId) };
         }),
       setLyricsOffset: (videoId, seconds) =>
         set((s) => {
@@ -127,7 +146,7 @@ export const useUi = create<UiState>()(
           // 오래된 것부터 지워 너무 커지지 않게
           const keys = Object.keys(next);
           for (const k of keys.slice(0, Math.max(0, keys.length - 500))) delete next[k];
-          return { lyricsOffsets: next };
+          return { lyricsOffsets: next, lyricsAt: touch(s.lyricsAt, videoId) };
         }),
       nowPlayingOpen: false,
       npTab: 'upnext',
@@ -154,7 +173,15 @@ export const useUi = create<UiState>()(
     }),
     {
       name: 'om-ui',
-      partialize: (s) => ({ sidebarCollapsed: s.sidebarCollapsed, npMode: s.npMode, playback: s.playback, lyricsOffsets: s.lyricsOffsets, lyricsOverrides: s.lyricsOverrides }),
+      partialize: (s) => ({
+        sidebarCollapsed: s.sidebarCollapsed,
+        npMode: s.npMode,
+        playback: s.playback,
+        playbackAt: s.playbackAt,
+        lyricsOffsets: s.lyricsOffsets,
+        lyricsOverrides: s.lyricsOverrides,
+        lyricsAt: s.lyricsAt,
+      }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<UiState>;
         return { ...current, ...p, playback: { ...current.playback, ...(p.playback ?? {}) } };

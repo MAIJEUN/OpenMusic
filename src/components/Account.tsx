@@ -89,7 +89,7 @@ export function LoginPanel({ onDone }: { onDone: () => void }) {
   return (
     <div className="login">
       <p className="modal__desc">
-        로그인하면 내 재생목록·좋아요·사이드바에 등록한 재생목록을 다른 기기·브라우저에서도 그대로 쓸 수 있어요. 지금 이 브라우저에 있는 보관함은 로그인한 계정의 보관함과 합쳐집니다.
+        로그인하면 내 재생목록·좋아요·사이드바에 등록한 재생목록과 재생 설정·곡별 가사 싱크·음량 측정값을 다른 기기·브라우저에서도 그대로 쓸 수 있어요. 지금 이 브라우저에 있는 것들은 로그인한 계정의 것과 합쳐집니다.
       </p>
       <div className="login__buttons">
         {cfg?.googleClientId && <div ref={btnRef} className="login__google" />}
