@@ -11,6 +11,7 @@ import { gainDb, getCalibration, headroomDb, loudnessOf, normalizeMode, onLoudne
 import { allMeasured, clearMeasured, measuredOf } from '../player/loudnessMeter';
 import { usePlayer } from '../store/player';
 import { CollectionArt } from './CollectionArt';
+import { LoginPanel } from './Account';
 import { IconButton } from './IconButton';
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -519,6 +520,12 @@ export function Dialogs() {
       return (
         <Modal title="재생목록에 저장" onClose={close}>
           <SaveToPlaylist tracks={dialog.tracks} suggestedTitle={dialog.suggestedTitle} onDone={close} />
+        </Modal>
+      );
+    case 'login':
+      return (
+        <Modal title="로그인" onClose={close}>
+          <LoginPanel onDone={close} />
         </Modal>
       );
     case 'copyLinked':

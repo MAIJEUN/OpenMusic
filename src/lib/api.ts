@@ -1,4 +1,4 @@
-import type { CollectionDetail, Counterpart, OriginalSong, ContinuationPage, Loudness, Lyrics, SearchFilter, SearchResult, ServerConfig, Track, UpNext } from '../../shared/types';
+import type { CollectionDetail, Counterpart, OriginalSong, ContinuationPage, Loudness, Lyrics, SearchFilter, SearchResult, ServerConfig, SyncDoc, Track, UpNext, AuthUser } from '../../shared/types';
 
 /** 배포 시 Cloudflare Worker 주소 (예: https://openmusic-api.xxx.workers.dev). 비어 있으면 같은 출처의 /api 사용 */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
@@ -37,6 +37,38 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+/** 로그인이 필요한 요청 (JSON 본문, 세션 토큰) — 캐시하지 않는다 */
+async function send<T>(method: string, path: string, token: string | null, body?: unknown): Promise<{ status: number; data: T }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api${path}`, {
+      method,
+      headers: {
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+    });
+  } catch {
+    throw new ApiError(0, '서버에 연결할 수 없습니다. 네트워크 상태를 확인해 주세요.');
+  }
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  // 409(동기화 충돌)는 부르는 쪽에서 처리한다
+  if (!res.ok && res.status !== 409) throw new ApiError(res.status, data?.error ?? `요청에 실패했습니다. (${res.status})`);
+  return { status: res.status, data };
+}
+
+export const authApi = {
+  loginWithGoogle: (credential: string) => send<{ token: string; user: AuthUser }>('POST', '/auth/google', null, { credential }).then((r) => r.data),
+  testLogin: () => send<{ token: string; user: AuthUser }>('POST', '/auth/test', null, {}).then((r) => r.data),
+  me: (token: string) => send<{ user: AuthUser }>('GET', '/auth/me', token).then((r) => r.data.user),
+  load: (token: string) => send<SyncDoc>('GET', '/sync', token).then((r) => r.data),
+  /** 저장. 다른 기기가 먼저 저장했으면 { conflict, doc } */
+  save: (token: string, baseRev: number, data: unknown) =>
+    send<{ rev?: number; conflict?: boolean; doc?: SyncDoc }>('PUT', '/sync', token, { baseRev, data }).then((r) => r.data),
+};
 
 /** 같은 요청을 짧은 시간 동안 재사용하는 클라이언트 캐시 */
 const memo = new Map<string, { at: number; promise: Promise<unknown> }>();

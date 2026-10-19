@@ -4,6 +4,7 @@
 #
 # 필요한 저장소 Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
 # (선택) 저장소 Variables: API_BASE_URL — Worker 주소를 직접 지정하고 싶을 때
+# (선택) 저장소 Variables: GOOGLE_CLIENT_ID — Google 로그인 (OAuth 클라이언트 ID, 공개 값)
 name: Deploy
 
 on:
@@ -40,6 +41,13 @@ jobs:
         env:
           VITE_BASE: /
           VITE_API_BASE: ''
+      # 로그인용 사용자 데이터 저장소(KV)와 Google 클라이언트 ID를 wrangler.toml에 넣는다
+      - name: Prepare login (KV + Google client ID)
+        run: node scripts/prepare-deploy.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       - name: Deploy worker
         id: deploy
         uses: cloudflare/wrangler-action@v3

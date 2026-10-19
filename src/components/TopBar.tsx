@@ -5,6 +5,7 @@ import { parseLink, targetToPath } from '../../shared/links';
 import { useUi } from '../store/ui';
 import { IconButton } from './IconButton';
 import { Logo } from './Logo';
+import { AccountButton } from './Account';
 
 /** 상단 입력칸: 검색어면 노래 검색, 재생목록/곡 링크면 바로 연다 */
 export function SearchBox({ autoFocus }: { autoFocus?: boolean }) {
@@ -97,6 +98,7 @@ export function TopBar() {
         <IconButton label="설정" onClick={() => setDialog({ type: 'settings' })}>
           <MdSettings />
         </IconButton>
+        <AccountButton />
       </div>
     </header>
   );

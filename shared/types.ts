@@ -158,4 +158,27 @@ export interface ServerConfig {
   mock: boolean;
   lang: string;
   location: string;
+  /** 로그인 설정 (없으면 로그인 기능을 숨긴다) */
+  auth?: {
+    /** Google 로그인 클라이언트 ID */
+    googleClientId?: string;
+    /** 목 데이터 모드: Google 없이 테스트 계정 로그인 */
+    testLogin?: boolean;
+  };
+}
+
+/** 로그인한 사용자 */
+export interface AuthUser {
+  /** g:<Google 계정 ID> */
+  id: string;
+  email?: string;
+  name: string;
+  picture?: string;
+}
+
+/** 서버에 저장된 사용자 데이터 (rev: 저장할 때마다 1씩 늘어나는 버전) */
+export interface SyncDoc {
+  rev: number;
+  data: unknown;
+  updatedAt?: number;
 }

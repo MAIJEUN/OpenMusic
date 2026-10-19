@@ -5,11 +5,18 @@
  */
 import { createApp } from '../server/app.js';
 import { youtubeProvider, ytOptions } from '../server/youtube.js';
+import { createAuth } from '../server/auth.js';
 
 interface Env {
   ASSETS: Fetcher;
   YT_LANG?: string;
   YT_LOCATION?: string;
+  /** 로그인한 사용자 데이터 저장소 (배포할 때 자동으로 만든다). 없으면 로그인 기능이 꺼진다 */
+  USERDATA?: KVNamespace;
+  /** Google OAuth 클라이언트 ID (저장소 Variables의 GOOGLE_CLIENT_ID) */
+  GOOGLE_CLIENT_ID?: string;
+  /** (선택) 세션 서명 키. 없으면 저장소에 자동으로 만든 키를 쓴다 */
+  SESSION_SECRET?: string;
 }
 
 let app: ReturnType<typeof createApp> | null = null;
@@ -22,7 +29,16 @@ export default {
     if (!app) {
       ytOptions.lang = env.YT_LANG ?? ytOptions.lang;
       ytOptions.location = env.YT_LOCATION ?? ytOptions.location;
-      app = createApp(youtubeProvider, { mock: false, ...ytOptions });
+      const kv = env.USERDATA;
+      const auth =
+        kv && env.GOOGLE_CLIENT_ID
+          ? createAuth({
+              store: { get: (k) => kv.get(k), put: (k, v) => kv.put(k, v) },
+              googleClientId: env.GOOGLE_CLIENT_ID,
+              sessionSecret: env.SESSION_SECRET,
+            })
+          : undefined;
+      app = createApp(youtubeProvider, { mock: false, ...ytOptions }, auth);
     }
 
     // GET 응답은 Cloudflare 엣지 캐시에 저장해서 YouTube 요청과 CPU 사용량을 줄인다.

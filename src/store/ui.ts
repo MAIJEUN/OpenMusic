@@ -54,6 +54,7 @@ export type LinkedEdit =
 
 export type Dialog =
   | { type: 'addLink' }
+  | { type: 'login' }
   /**
    * 링크로 가져온 재생목록을 내 재생목록으로 복사.
    * edit가 있으면 '링크로 가져온 재생목록은 수정할 수 없어요' 안내와 함께 띄우고, 복사본에 그 수정을 바로 적용한다

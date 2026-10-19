@@ -14,6 +14,7 @@ import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { WatchPage } from './pages/WatchPage';
 import { PlayerHost } from './player/PlayerHost';
+import { useLibrarySync } from './lib/sync';
 import { usePlayer } from './store/player';
 import { useUi } from './store/ui';
 
@@ -28,6 +29,7 @@ function ScrollToTop() {
 
 export default function App() {
   useShortcuts();
+  useLibrarySync();
   const collapsed = useUi((s) => s.sidebarCollapsed);
   const npOpen = useUi((s) => s.nowPlayingOpen);
   const hasPlayer = usePlayer((s) => s.queue.length > 0);
