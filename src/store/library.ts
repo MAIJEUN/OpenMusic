@@ -25,6 +25,32 @@ export interface LikedTrack extends Track {
   likedAt: number;
 }
 
+/**
+ * 지운 항목과 지운 시각 (로그인 동기화용). 다른 기기의 예전 데이터와 합칠 때 지운 항목이 되살아나지 않게 한다.
+ * saved: 재생목록 ID, playlists: 내 재생목록 ID, liked: 영상 ID
+ */
+export interface Deleted {
+  saved: Record<string, number>;
+  playlists: Record<string, number>;
+  liked: Record<string, number>;
+}
+
+/** 로그인하면 동기화하는 내 보관함 */
+export interface LibraryData {
+  saved: SavedCollection[];
+  playlists: LocalPlaylist[];
+  liked: LikedTrack[];
+  deleted: Deleted;
+}
+
+const emptyDeleted = (): Deleted => ({ saved: {}, playlists: {}, liked: {} });
+const without = (m: Record<string, number>, key: string) => {
+  if (!(key in m)) return m;
+  const next = { ...m };
+  delete next[key];
+  return next;
+};
+
 /** 카드·메뉴 등에서 공통으로 쓰는 재생목록 정보 */
 export interface CollectionInfo {
   kind: 'playlist' | 'album' | 'local' | 'liked';
@@ -72,6 +98,9 @@ interface LibraryState {
   saved: SavedCollection[];
   playlists: LocalPlaylist[];
   liked: LikedTrack[];
+  deleted: Deleted;
+  /** 동기화로 받은 보관함으로 바꾼다 */
+  replaceAll: (d: LibraryData) => void;
 
   isSaved: (id: string) => boolean;
   /** 등록하거나, 이미 등록돼 있으면 제목/썸네일만 갱신 */
@@ -102,15 +131,25 @@ export const useLibrary = create<LibraryState>()(
       saved: [],
       playlists: [],
       liked: [],
+      deleted: emptyDeleted(),
+      replaceAll: (d) => set({ saved: d.saved, playlists: d.playlists, liked: d.liked, deleted: d.deleted }),
 
       isSaved: (id) => get().saved.some((s) => s.id === id),
       register: (c) =>
-        set((s) =>
-          s.saved.some((x) => x.id === c.id)
-            ? { saved: s.saved.map((x) => (x.id === c.id ? { ...x, ...c } : x)) }
-            : { saved: [{ ...c, addedAt: Date.now() }, ...s.saved] },
-        ),
-      remove: (id) => set((s) => ({ saved: s.saved.filter((x) => x.id !== id) })),
+        set((s) => {
+          const cur = s.saved.find((x) => x.id === c.id);
+          if (cur) {
+            // 제목·썸네일이 그대로면 바꾸지 않는다 (열 때마다 동기화가 일어나지 않게)
+            const same = cur.title === c.title && cur.subtitle === c.subtitle && cur.thumbnail === c.thumbnail && cur.kind === c.kind;
+            return same ? s : { saved: s.saved.map((x) => (x.id === c.id ? { ...x, ...c } : x)) };
+          }
+          return {
+            saved: [{ ...c, addedAt: Date.now() }, ...s.saved],
+            deleted: { ...s.deleted, saved: without(s.deleted.saved, c.id) },
+          };
+        }),
+      remove: (id) =>
+        set((s) => ({ saved: s.saved.filter((x) => x.id !== id), deleted: { ...s.deleted, saved: { ...s.deleted.saved, [id]: Date.now() } } })),
 
       createPlaylist: (title, tracks = []) => {
         const id = `${LOCAL_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -131,11 +170,22 @@ export const useLibrary = create<LibraryState>()(
         })),
       deletePlaylist: (id) => {
         const p = get().playlists.find((x) => x.id === id);
-        set((s) => ({ playlists: s.playlists.filter((x) => x.id !== id) }));
+        set((s) => ({
+          playlists: s.playlists.filter((x) => x.id !== id),
+          deleted: { ...s.deleted, playlists: { ...s.deleted.playlists, [id]: Date.now() } },
+        }));
         return p;
       },
       restorePlaylist: (p) =>
-        set((s) => (s.playlists.some((x) => x.id === p.id) ? s : { playlists: [p, ...s.playlists] })),
+        set((s) =>
+          s.playlists.some((x) => x.id === p.id)
+            ? s
+            : {
+                // 되살린 시각을 새로 남겨서 다른 기기의 '삭제'보다 나중 일로 본다
+                playlists: [{ ...p, updatedAt: Date.now() }, ...s.playlists],
+                deleted: { ...s.deleted, playlists: without(s.deleted.playlists, p.id) },
+              },
+        ),
       addToPlaylist: (id, tracks) => {
         const p = get().playlists.find((x) => x.id === id);
         if (!p) return 0;
@@ -172,20 +222,25 @@ export const useLibrary = create<LibraryState>()(
         const liked = get().isLiked(t.videoId);
         set((s) => ({
           liked: liked ? s.liked.filter((x) => x.videoId !== t.videoId) : [{ ...t, likedAt: Date.now() }, ...s.liked],
+          deleted: {
+            ...s.deleted,
+            liked: liked ? { ...s.deleted.liked, [t.videoId]: Date.now() } : without(s.deleted.liked, t.videoId),
+          },
         }));
         return !liked;
       },
     }),
     {
       name: 'om-library',
-      version: 3,
-      partialize: (s) => ({ saved: s.saved, playlists: s.playlists, liked: s.liked }),
+      version: 4,
+      partialize: (s) => ({ saved: s.saved, playlists: s.playlists, liked: s.liked, deleted: s.deleted }),
       migrate: (persisted) => {
-        const old = (persisted ?? {}) as Partial<{ saved: SavedCollection[]; playlists: LocalPlaylist[]; liked: LikedTrack[] }>;
+        const old = (persisted ?? {}) as Partial<LibraryData>;
         return {
           saved: (old.saved ?? []).filter((c) => c.kind === 'playlist' || c.kind === 'album'),
           playlists: old.playlists ?? [],
           liked: old.liked ?? [],
+          deleted: old.deleted ?? emptyDeleted(),
         };
       },
     },

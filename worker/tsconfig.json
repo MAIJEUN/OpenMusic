@@ -4,5 +4,5 @@
     "lib": ["ES2023"],
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["./", "../server/app.ts", "../server/youtube.ts", "../server/normalize.ts", "../server/provider.ts", "../shared"]
+  "include": ["./", "../server/app.ts", "../server/youtube.ts", "../server/normalize.ts", "../server/provider.ts", "../server/auth.ts", "../shared"]
 }

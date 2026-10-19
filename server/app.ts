@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { SearchFilter, ServerConfig } from '../shared/types.js';
 import type { Provider } from './provider.js';
+import type { Auth } from './auth.js';
 
 const MIN = 60_000;
 
@@ -30,7 +31,7 @@ class HttpError extends Error {
   }
 }
 
-export function createApp(provider: Provider, config: ServerConfig) {
+export function createApp(provider: Provider, config: ServerConfig, auth?: Auth) {
   /* 간단한 메모리 캐시 (Worker에서는 isolate 단위로 유지된다) */
   const cache = new Map<string, { value: unknown; expires: number }>();
   async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
@@ -50,7 +51,8 @@ export function createApp(provider: Provider, config: ServerConfig) {
 
   const app = new Hono().basePath('/api');
 
-  app.use('*', cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 }));
+  // GitHub Pages 등 다른 주소의 웹 앱도 쓸 수 있게 허용한다 (로그인은 쿠키가 아닌 Authorization 헤더로)
+  app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'], maxAge: 86400 }));
 
   // 브라우저/CDN 캐시 시간 (초)
   const ttl = (sec: number) => async (c: { header: (k: string, v: string) => void }, next: () => Promise<void>) => {
@@ -58,7 +60,63 @@ export function createApp(provider: Provider, config: ServerConfig) {
     c.header('Cache-Control', `public, max-age=${sec}`);
   };
 
-  app.get('/config', (c) => c.json(config));
+  const publicConfig: ServerConfig = auth?.enabled
+    ? { ...config, auth: { googleClientId: auth.googleClientId, testLogin: !!auth.testLogin } }
+    : config;
+  app.get('/config', (c) => c.json(publicConfig));
+
+  /* ---------------- 로그인 · 동기화 (응답은 사람마다 다르므로 절대 캐시하지 않는다) ---------------- */
+  const noStore = async (c: { header: (k: string, v: string) => void }, next: () => Promise<void>) => {
+    await next();
+    c.header('Cache-Control', 'no-store');
+  };
+  app.use('/auth/*', noStore);
+  app.use('/sync', noStore);
+  const needAuth = () => {
+    if (!auth?.enabled) throw new HttpError(404, '로그인 기능이 꺼져 있습니다.');
+    return auth;
+  };
+  const userOf = async (c: { req: { header: (k: string) => string | undefined } }) => {
+    const a = needAuth();
+    const token = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+    const user = await a.verify(token);
+    if (!user) throw new HttpError(401, '로그인이 필요합니다.');
+    return user;
+  };
+
+  app.post('/auth/google', async (c) => {
+    const a = needAuth();
+    const body = (await c.req.json().catch(() => ({}))) as { credential?: string };
+    if (!body.credential) throw new HttpError(400, 'credential 값이 필요합니다.');
+    try {
+      return c.json(await a.loginWithGoogle(body.credential));
+    } catch (e) {
+      throw new HttpError(401, (e as Error).message);
+    }
+  });
+
+  app.post('/auth/test', async (c) => {
+    const a = needAuth();
+    if (!a.testLogin) throw new HttpError(404, '테스트 로그인은 목 데이터 모드에서만 쓸 수 있습니다.');
+    return c.json(await a.testLogin());
+  });
+
+  app.get('/auth/me', async (c) => c.json({ user: await userOf(c) }));
+
+  app.get('/sync', async (c) => {
+    const user = await userOf(c);
+    return c.json(await needAuth().load(user));
+  });
+
+  app.put('/sync', async (c) => {
+    const user = await userOf(c);
+    const body = (await c.req.json().catch(() => null)) as { baseRev?: number; data?: unknown } | null;
+    if (!body || typeof body.baseRev !== 'number' || body.data === undefined) throw new HttpError(400, 'baseRev와 data 값이 필요합니다.');
+    const size = JSON.stringify(body.data).length;
+    if (size > 5_000_000) throw new HttpError(413, '저장할 데이터가 너무 큽니다.');
+    const r = await needAuth().save(user, body.baseRev, body.data);
+    return r.ok ? c.json({ rev: r.rev }) : c.json({ conflict: true, doc: r.doc }, 409);
+  });
 
   app.get('/playlist/:id', async (c) => {
     const id = need(c.req.param('id'), 'id');
@@ -160,7 +218,14 @@ export function createApp(provider: Provider, config: ServerConfig) {
     console.error('[api]', c.req.path, err.message);
     c.header('Cache-Control', 'no-store');
     return c.json(
-      { error: status === 502 ? `음악 정보를 가져오지 못했습니다. (${err.message})` : err.message },
+      {
+        error:
+          status !== 502
+            ? err.message
+            : /^\/api\/(auth|sync)/.test(c.req.path)
+              ? `로그인 서버에 문제가 생겼습니다. (${err.message})`
+              : `음악 정보를 가져오지 못했습니다. (${err.message})`,
+      },
       status as 400,
     );
   });
